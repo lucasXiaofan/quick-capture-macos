@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const bridge = new Function('p', 'app', fs.readFileSync(__dirname + '/../Resources/obsidian_capture/bridge.js', 'utf8'));
-async function scenario({active = true, editor = true, changed = false, diary = false, empty = false, force = false} = {}) {
+async function scenario({active = true, editor = true, changed = false, diary = false, empty = false, force = false, retries = 0} = {}) {
   delete globalThis.__roadQuickCapture;
   const files = new Map();
   const note = {path: 'note.md', extension: 'md', text: 'abcd'};
@@ -26,7 +26,10 @@ async function scenario({active = true, editor = true, changed = false, diary = 
   assert.equal(snap.cursor, active && !diary && editor);
   if (changed) note.text += '!';
   bridge({...p, action:'save', force_diary: force}, app);
+  // The app retries a save whose reply got lost; a repeat with the same id must not write again.
+  for (let i = 0; i < retries; i++) assert.equal(bridge({...p, action:'save', force_diary: force}, app), true);
   await new Promise(resolve => setImmediate(resolve));
+  for (let i = 0; i < retries; i++) bridge({...p, action:'save', force_diary: force}, app);
   const result = bridge({...p, action:'status'}, app);
   assert.ok(result.path, JSON.stringify(result));
   return files.get(result.path).text;
@@ -39,5 +42,7 @@ async function scenario({active = true, editor = true, changed = false, diary = 
   assert.equal(await scenario({diary:true}), 'TEMPLATECAPTURE');
   assert.equal(await scenario({diary:true, empty:true}), 'TEMPLATECAPTURE');
   assert.equal(await scenario({force:true}), 'TEMPLATECAPTURE');
-  console.log('7 bridge tests passed: cursor, reading view, stale cursor, missing diary, diary-only, empty diary, switched to diary');
+  assert.equal(await scenario({retries:2}), 'abCAPTUREcd');
+  assert.equal(await scenario({diary:true, retries:2}), 'TEMPLATECAPTURE');
+  console.log('9 bridge tests passed: cursor, reading view, stale cursor, missing diary, diary-only, empty diary, switched to diary, retried save writes once (note, diary)');
 })().catch(e => {console.error(e); process.exitCode = 1;});

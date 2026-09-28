@@ -16,6 +16,18 @@ Grant **Screen Recording** in System Settings → Privacy & Security, then relau
 
 Settings → AI Chat → *Detect Again*. If it still fails, run `which claude` or `which codex` in Terminal, and paste the path under *Advanced*. Make sure you've run the CLI once in Terminal to sign in.
 
+## “Capture not saved — Obsidian CLI isn't responding”, but the capture *was* saved (fixed in 3.0.1)
+
+**Symptom:** after pressing ⌘↩, an alert said the capture wasn't saved and pointed to a recovery file, yet the text was already in the note.
+
+**Cause:** Obsidian's CLI occasionally exits without printing the result of a command it *did* run. The system log showed the `save` command's CLI process start, write the note, and exit normally in 0.25 s, but its reply never arrived, and no follow-up status check ran. Obsidian recorded the save as successful. The app took the missing reply as a failure. It couldn't be reproduced on demand: hundreds of repeated, parallel, and bare-environment calls all replied. Obsidian itself prints *"Your Obsidian installer is out of date… latest installer includes better CLI support"*, so an older installer is a likely factor.
+
+**Fix:** the app retries a call when the reply is missing (up to 3 attempts). This is safe because every bridge action can be repeated: a repeated `save` with the same capture id returns without writing again, which `tests/bridge.test.cjs` checks. Verified by dropping every other CLI reply on purpose: every call recovered, and nothing was written twice. Lost replies are now logged, without your text, to `~/Library/Application Support/Obsidian Quick Capture/obsidian_capture/bridge.log`.
+
+**Also recommended:** install the latest Obsidian from [obsidian.md/download](https://obsidian.md/download). The in-app updater doesn't update the installer that the CLI runs from.
+
+If you saw this alert, check the note. When the text is there, the recovery file named in the alert can be deleted (menu → *Unsaved Captures*).
+
 ## Obsidian froze after building the app (fixed in 3.0.0)
 
 **Symptom:** Obsidian stopped responding a few seconds after `scripts/build.sh` ran, with its window process at 100% CPU for many minutes. It happened on every build, so it looked like the new app was freezing Obsidian.

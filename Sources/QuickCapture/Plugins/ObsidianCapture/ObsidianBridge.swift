@@ -21,6 +21,11 @@ struct ObsidianBridge {
         return fm.isExecutableFile(atPath: path) ? path : nil
     }
 
+    /// Obsidian's CLI occasionally exits without printing the result even though the code ran
+    /// (seen when a capture was saved but reported as failed). Every bridge action is safe to
+    /// repeat — a repeated `save` with the same id doesn't write again — so lost replies are retried.
+    static let attempts = 3
+
     func call(_ action: String, _ params: [String: Any] = [:]) async throws -> Any? {
         guard let vault = config.vaultURL else { throw AppError("Choose your Obsidian vault first.") }
         guard let body = ObsidianBridge.script else { throw AppError("bridge.js is missing from the app bundle.") }
@@ -33,21 +38,50 @@ struct ObsidianBridge {
         let json = String(data: try JSONSerialization.data(withJSONObject: p), encoding: .utf8)!
         let code = "(() => {const p=" + json + "; const value=(() => {" + body
             + "})(); return \"QC:\"+btoa(unescape(encodeURIComponent(JSON.stringify(value))));})()"
-        let result = try await Shell.run(obsidian, ["vault=" + vault.lastPathComponent, "eval", "code=" + code],
-                                         timeout: 12)
-        let out = result.stdout + result.stderr
-        guard let range = out.range(of: #"QC:[A-Za-z0-9+/=]+"#, options: .regularExpression),
-              let data = Data(base64Encoded: String(out[range].dropFirst(3))) else {
+        for attempt in 1...Self.attempts {
+            if attempt > 1 { try await Task.sleep(nanoseconds: UInt64(attempt - 1) * 300_000_000) }
+            let result = try await Shell.run(obsidian, ["vault=" + vault.lastPathComponent, "eval", "code=" + code],
+                                             timeout: 12)
+            let out = result.stdout + result.stderr
+            if let range = out.range(of: #"QC:[A-Za-z0-9+/=]+"#, options: .regularExpression),
+               let data = Data(base64Encoded: String(out[range].dropFirst(3))) {
+                if attempt > 1 { BridgeLog.write("\(action): reply received on attempt \(attempt)") }
+                return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            }
             if out.contains("Vault not found") {
                 throw AppError("Obsidian doesn't have the vault “\(vault.lastPathComponent)” open.")
             }
             if let err = out.split(separator: "\n").last(where: { $0.contains("Error") }) {
                 throw AppError("Obsidian CLI error: \(err)")
             }
-            throw AppError("Obsidian CLI isn't responding. In Obsidian, enable Settings → General → "
-                           + "Command line interface, and keep the vault open.")
+            BridgeLog.write("\(action): no reply on attempt \(attempt) (exit \(result.status)); output: "
+                            + String(out.suffix(400)).replacingOccurrences(of: "\n", with: " ⏎ "))
         }
-        return try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        throw AppError("Obsidian CLI isn't responding. In Obsidian, enable Settings → General → "
+                       + "Command line interface, and keep the vault open.")
+    }
+}
+
+/// Records lost CLI replies (never capture text) so intermittent problems leave evidence:
+/// ~/Library/Application Support/Obsidian Quick Capture/obsidian_capture/bridge.log
+enum BridgeLog {
+    static var url: URL { Paths.data(for: ObsidianCapturePlugin.pluginID).appendingPathComponent("bridge.log") }
+
+    static func write(_ line: String) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let data = Data("\(stamp) \(line)\n".utf8)
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 256_000 {
+            try? fm.removeItem(at: url)  // Keep it small; only recent events matter.
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
     }
 }
 

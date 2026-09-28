@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.1 — 2026-09-28
+
+### Fixed
+- **“Capture not saved” when it actually was saved:** Obsidian's CLI sometimes drops a command's reply after running it. The app now retries calls with a missing reply (the bridge never saves twice), and logs lost replies to `obsidian_capture/bridge.log`. See [Troubleshooting](docs/troubleshooting.md#capture-not-saved--obsidian-cli-isnt-responding-but-the-capture-was-saved-fixed-in-301).
+
 ## 3.0.0 — 2026-09-28
 
 ### Added

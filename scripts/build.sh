@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="${0:A:h:h}"
 NAME="Obsidian Quick Capture"
 BUNDLE_ID="${BUNDLE_ID:-com.xiaofanlu.ObsidianQuickCapture}"
-VERSION="3.0.0"
+VERSION="3.0.1"
 BUILD_NUMBER="$(date +%Y%m%d%H%M)"
 DIST="$ROOT/dist"
 APP="$DIST/$NAME.app"
