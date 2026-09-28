@@ -1,0 +1,13 @@
+{
+  "vault": "",
+  "obsidian": "/Applications/Obsidian.app/Contents/MacOS/obsidian",
+  "diary_folder": "Daily",
+  "template": "",
+  "destination_mode": "current",
+  "hotkeys": {
+    "image": "<cmd>+<shift>+i",
+    "text": "<cmd>+<shift>+j",
+    "diary_image": "<cmd>+<shift>+<alt>+i",
+    "diary_text": "<cmd>+<shift>+<alt>+j"
+  }
+}

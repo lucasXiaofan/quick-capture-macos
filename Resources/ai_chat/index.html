@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: data: https:;">
+  <title>AI Chat</title>
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="vendor/hljs-light.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="vendor/hljs-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="chat.css">
+</head>
+<body>
+  <header>
+    <label class="model">
+      <select id="model" title="Model"></select>
+    </label>
+    <button id="folder" class="chip" title="Working folder — click to change">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg>
+      <span id="folder-name">~</span>
+    </button>
+    <span id="permissions" class="badge"></span>
+    <span class="spacer"></span>
+    <button id="new-chat" class="icon" title="New chat (⌘N)">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.5 1.8l2.7 2.7-7.4 7.4-3.3.6.6-3.3zM2 14.5h12"/></svg>
+    </button>
+  </header>
+
+  <main id="log">
+    <div id="empty">
+      <h1>Ask anything</h1>
+      <p id="empty-detail">Looking for Claude Code and Codex…</p>
+    </div>
+  </main>
+
+  <footer>
+    <form id="composer">
+      <textarea id="input" rows="1" placeholder="Message…" autofocus></textarea>
+      <button id="send" type="submit" title="Send (↩)">
+        <svg class="send" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg>
+        <svg class="stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>
+      </button>
+    </form>
+    <div class="hints">↩ send · ⇧↩ new line · ⌘. stop · ⌘N new chat · esc hide · drop files to reference them</div>
+  </footer>
+
+  <script src="vendor/marked.umd.js"></script>
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script src="render.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>
