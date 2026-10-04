@@ -63,7 +63,7 @@ struct ObsidianBridge {
 }
 
 /// Records lost CLI replies (never capture text) so intermittent problems leave evidence:
-/// ~/Library/Application Support/Obsidian Quick Capture/obsidian_capture/bridge.log
+/// ~/Library/Application Support/Quick Capture/obsidian_capture/bridge.log
 enum BridgeLog {
     static var url: URL { Paths.data(for: ObsidianCapturePlugin.pluginID).appendingPathComponent("bridge.log") }
 

@@ -15,6 +15,7 @@ struct SettingsView: View {
         NavigationSplitView {
             List(selection: $router.page) {
                 Label("General", systemImage: "gearshape").tag("general")
+                Label("Shortcuts", systemImage: "keyboard").tag("shortcuts")
                 Section("Plugins") {
                     ForEach(state.plugins, id: \.id) { plugin in
                         Label(plugin.name, systemImage: plugin.symbol)
@@ -27,6 +28,8 @@ struct SettingsView: View {
         } detail: {
             if let id = router.page, let plugin = state.plugin(id) {
                 PluginPage(plugin: plugin, state: state).id(id)
+            } else if router.page == "shortcuts" {
+                ShortcutsPage(state: state)
             } else {
                 GeneralPage(state: state, router: router)
             }
@@ -118,13 +121,7 @@ struct PluginPage: View {
     @ViewBuilder private var shortcuts: some View {
         Section {
             ForEach(plugin.actions) { action in
-                LabeledContent {
-                    ShortcutRecorder(state: state, shortcut: state.config.shortcut(action, of: plugin)) { new in
-                        apply { $0.setShortcut(new, for: action, of: plugin) }
-                    }
-                } label: {
-                    Label(action.title, systemImage: action.symbol)
-                }
+                ShortcutRow(state: state, slot: .init(plugin: plugin, action: action))
             }
             ForEach(state.hotkeyWarnings, id: \.self) { Label($0, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
             Button("Restore Default Shortcuts") { apply { $0.resetShortcuts(of: plugin) } }
@@ -138,6 +135,53 @@ struct PluginPage: View {
 
     private func apply(_ change: (inout AppConfig) -> Void) {
         do { try state.update(change); error = nil } catch { self.error = error.localizedDescription }
+    }
+}
+
+/// Every shortcut of every plugin in one place, with duplicates called out.
+private struct ShortcutsPage: View {
+    @ObservedObject var state: AppState
+    @State private var error: String?
+
+    var body: some View {
+        let duplicates = state.duplicateShortcuts
+        Form {
+            if !duplicates.isEmpty {
+                Section("Conflicts") {
+                    ForEach(duplicates, id: \.0) { shortcut, slots in
+                        Label("\(shortcut.display) is used by \(slots.map(\.label).joined(separator: ", "))",
+                              systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                }
+            }
+            ForEach(state.hotkeyWarnings, id: \.self) { Label($0, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+            ForEach([state.core] + state.plugins, id: \.id) { plugin in
+                let off = plugin !== state.core && !state.config.isEnabled(plugin)
+                Section {
+                    ForEach(plugin.actions) { action in
+                        ShortcutRow(state: state, slot: .init(plugin: plugin, action: action))
+                    }
+                } header: {
+                    HStack {
+                        Text(plugin.name)
+                        if off { Text("— plugin is off, shortcuts inactive").foregroundStyle(.secondary) }
+                    }
+                }
+                .opacity(off ? 0.6 : 1)
+            }
+            Section {
+                Button("Restore All Default Shortcuts") {
+                    do { try state.update { cfg in ([state.core] + state.plugins).forEach { cfg.resetShortcuts(of: $0) } }; error = nil }
+                    catch { self.error = error.localizedDescription }
+                }
+                if let error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+            } footer: {
+                Text("Click a shortcut, then press the new key combination; Esc cancels. Shortcuts work system-wide. Two actions can't share one shortcut, so recording a taken one asks before replacing it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Shortcuts")
     }
 }
 

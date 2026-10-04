@@ -33,6 +33,13 @@ final class CapturePanel: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Re-shows an open panel (e.g. the hotkey pressed again after clicking away).
+    static func bringToFront() {
+        guard let panel = current?.panel else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
     private func show(_ request: CaptureRequest) {
         let view = CaptureView(request: request, onDone: { [weak self] in self?.finish($0) })
         let host = NSHostingView(rootView: view)
@@ -42,6 +49,7 @@ final class CapturePanel: NSObject, NSWindowDelegate {
         panel.titleVisibility = .hidden
         panel.isMovableByWindowBackground = true
         panel.level = .floating
+        panel.hidesOnDeactivate = false  // NSPanel default hides it when another app is clicked
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.contentView = host

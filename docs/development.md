@@ -6,7 +6,7 @@ Requires macOS 13+ and Xcode or the Command Line Tools. Node is only needed for 
 scripts/build.sh --install
 ```
 
-This compiles the app, bundles and signs `dist/Obsidian Quick Capture.app`, creates `dist/Obsidian Quick Capture.dmg`, then copies the app to /Applications and launches it. Without `--install`, it only builds.
+This compiles the app, bundles and signs `dist/Quick Capture.app`, creates `dist/Quick Capture.dmg`, then copies the app to /Applications and launches it. Without `--install`, it only builds.
 
 - **Signing:** the script uses a *Developer ID Application* certificate if you have one, then *Apple Development*, then ad-hoc. Ad-hoc builds lose the Screen Recording permission on every rebuild.
 - **Bundle ID:** set `BUNDLE_ID=com.you.QuickCapture scripts/build.sh`. Keep it stable, because permissions are tied to it.

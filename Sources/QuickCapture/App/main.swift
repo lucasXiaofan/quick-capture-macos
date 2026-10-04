@@ -112,7 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.windows.showSettings(state: self.state)
         }
-        settings.keyEquivalent = ","
+        if let action = state.core.action("open_settings"), let (key, mods) = config.shortcut(action, of: state.core)?.menuKeyEquivalent {
+            settings.keyEquivalent = key
+            settings.keyEquivalentModifierMask = mods
+        }
         menu.addItem(settings)
         menu.addItem(NSMenuItem(title: "Quit Quick Capture", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }

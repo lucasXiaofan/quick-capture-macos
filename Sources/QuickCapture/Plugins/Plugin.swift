@@ -18,6 +18,10 @@ protocol Plugin: AnyObject {
     /// Things a shortcut can trigger. Each gets a shortcut recorder in Settings and a menu item.
     var actions: [PluginAction] { get }
 
+    /// False hides an action's global shortcut (it isn't registered, so the key reaches other apps).
+    /// Call `state.applyHotkeys()` after the answer changes.
+    func isAvailable(_ action: PluginAction) -> Bool
+
     /// Called when a hotkey or menu item fires. Only called while the plugin is enabled.
     func perform(_ action: PluginAction)
 
@@ -47,6 +51,7 @@ protocol Plugin: AnyObject {
 
 extension Plugin {
     var enabledByDefault: Bool { true }
+    func isAvailable(_ action: PluginAction) -> Bool { true }
     func defaultSettings() -> [String: JSONValue] { [:] }
     func validate(_ config: AppConfig) throws {}
     func activate() {}

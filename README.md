@@ -6,6 +6,8 @@ A small menu-bar app that puts useful things behind global shortcuts. Each featu
 |---|---|---|
 | **AI Chat** | ⌃⌥Space | A quick chat with **Claude Code** or **Codex** from any app. It can search the web and read and edit files. Renders Markdown and LaTeX, and every link is clickable. |
 | **Obsidian Capture** | ⌘⇧I / ⌘⇧J | Screenshot or jot a note straight into the Obsidian note you're in (at the cursor) or today's diary. |
+| **Keyboard Mouse** | hold Right ⌥ | Hold a key, then WASD moves the pointer, 1–6 jump to a screen panel, Space/E click. Off by default. |
+| **Nose Control** | ⌃⌥N | Experimental: move the pointer by turning your head (camera, on-device). Found too unstable to recommend. Off by default. |
 
 No account and no server. AI Chat uses the Claude Code or Codex CLI you already have, with your own sign-in.
 
@@ -32,6 +34,10 @@ For AI Chat, install at least one CLI and run it once to sign in:
 
 - **AI Chat:** press ⌃⌥Space, type, and press ↩. Pick the model and working folder in the header; ⌘N starts a new chat, Esc hides it. By default it can edit files in the working folder and run sandboxed commands; switch to *Read only* or *Full access* in Settings. → [docs/ai-chat.md](docs/ai-chat.md)
 - **Obsidian Capture:** press ⌘⇧I, drag a region, add a note, and press ⌘↩. It lands at your cursor in Obsidian. Add ⌥ (⌥⇧⌘I / ⌥⇧⌘J) to send to today's diary instead. → [docs/obsidian-capture.md](docs/obsidian-capture.md)
+- **Keyboard Mouse:** turn it on in Settings, then hold Right ⌥ and press W/A/S/D to move, 1–6 to jump to a screen panel, Space to click (twice = double click), E to right-click. → [docs/keyboard-mouse.md](docs/keyboard-mouse.md)
+- **Nose Control (experimental, not recommended):** turn it on in Settings, press ⌃⌥N, calibrate (centre, then your comfortable left/right/up/down limits, confirming each with ⌥↩), then move the pointer with your head. ⌥↩ left click, ⌥⇧↩ right click, ⌃⌥↩ double click, ⌥Space pause. All shortcuts are configurable. → [docs/nose-control.md](docs/nose-control.md)
+
+Every shortcut is listed in **Settings → Shortcuts**, where you can change them and see conflicts. ⌃⌥, opens Settings from anywhere.
 
 All settings are also in a JSON file that applies live when edited. → [docs/configuration.md](docs/configuration.md)
 
@@ -39,6 +45,8 @@ All settings are also in a JSON file that applies live when edited. → [docs/co
 
 - [AI Chat](docs/ai-chat.md): models, permissions, links, keys
 - [Obsidian Capture](docs/obsidian-capture.md): setup, and where captures go
+- [Keyboard Mouse](docs/keyboard-mouse.md): activation key, panels, clicks
+- [Nose Control](docs/nose-control.md): calibration, sensitivity, steadiness, shortcuts
 - [Configuration](docs/configuration.md): `config.json` reference
 - [Troubleshooting](docs/troubleshooting.md): permissions, missing CLIs, Gatekeeper
 - [Development](docs/development.md): building, signing, tests, writing a plugin
@@ -46,7 +54,7 @@ All settings are also in a JSON file that applies live when edited. → [docs/co
 
 ## Uninstall
 
-Turn off *Open at login* in Settings, quit from the menu, and delete the app. Optionally, delete `~/Library/Application Support/Obsidian Quick Capture`. Your notes are never touched.
+Turn off *Open at login* in Settings, quit from the menu, and delete the app. Optionally, delete `~/Library/Application Support/Quick Capture`. Your notes are never touched.
 
 ## License
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **The app is now just "Quick Capture"** (it works with Obsidian but doesn't depend on it). The bundle identifier is unchanged, so permissions carry over. Settings move automatically from `~/Library/Application Support/Obsidian Quick Capture` to `~/Library/Application Support/Quick Capture` on first launch, and the installer removes the old `Obsidian Quick Capture.app`.
+
+### Added
+- **Shortcuts page** in Settings: every shortcut of every plugin in one place, with duplicate detection. Recording a shortcut another action already uses asks whether to replace it, and ⌘-only combinations get a heads-up that they overlap with other apps' commands.
+- **Open Settings shortcut** (default ⌃⌥,): a configurable system-wide shortcut. The menu item no longer uses a fixed ⌘, that clashed with other apps.
+- **Nose Control plugin** (off by default, ⌃⌥N): move the pointer by turning your head, tracked on-device with the camera, and click with configurable keyboard shortcuts (left, right, double click, pause, sensitivity up/down, recalibrate). Live feedback during calibration, separate horizontal/vertical sensitivity, and a steadiness setting. See [docs/nose-control.md](docs/nose-control.md). **Experimental:** eye and nose tracking were both tried and found too unstable to replace a mouse, so Keyboard Mouse is the recommended way to move the pointer without one.
+- **Keyboard Mouse plugin** (off by default): hold Right Option (configurable) and use WASD to move the pointer with acceleration, 1–6 to jump to one of six screen panels, Space for the left button (press twice for a double click, hold to drag) and E for the right button. See [docs/keyboard-mouse.md](docs/keyboard-mouse.md).
+- Plugins can hide a shortcut while it isn't relevant (`Plugin.isAvailable`), so it isn't grabbed system-wide.
+- The app declares camera access (`NSCameraUsageDescription` and the camera entitlement in `scripts/entitlements.plist`).
+
 ## 3.0.1 — 2026-09-28
 
 ### Fixed

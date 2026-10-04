@@ -7,6 +7,8 @@ final class AppState: ObservableObject {
     static let shared = AppState()
 
     let plugins: [Plugin]
+    /// The app's own shortcuts (Open Settings). Always on; not listed as a plugin.
+    let core: Plugin = CorePlugin()
     @Published private(set) var config = AppConfig()
     @Published private(set) var configError: String?
     @Published private(set) var hotkeyWarnings: [String] = []
@@ -34,6 +36,7 @@ final class AppState: ObservableObject {
     }
 
     func start() {
+        Paths.migrateLegacyHome()
         try? FileManager.default.createDirectory(at: Paths.home, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: Paths.config.path) {
             reloadFromDisk(announce: false)
@@ -67,7 +70,7 @@ final class AppState: ObservableObject {
         do {
             let loaded = try AppConfig.load()
             try validate(loaded)
-            let normalized = loaded.normalized(for: plugins)
+            let normalized = loaded.normalized(for: [core] + plugins)
             // Migrates old files and writes every option out; at launch also rewrites legacy layouts.
             if normalized != loaded || (!announce && lastConfigData != normalized.encoded()) {
                 save(normalized)
@@ -89,7 +92,7 @@ final class AppState: ObservableObject {
         var next = config
         change(&next)
         try validate(next)
-        save(next.normalized(for: plugins))
+        save(next.normalized(for: [core] + plugins))
     }
 
     func setEnabled(_ on: Bool, plugin: Plugin) throws {
@@ -109,7 +112,7 @@ final class AppState: ObservableObject {
 
     private func validate(_ next: AppConfig) throws {
         var seen: [Shortcut: String] = [:]
-        for plugin in plugins where next.isEnabled(plugin) {
+        for plugin in [core] + plugins where plugin === core || next.isEnabled(plugin) {
             for action in plugin.actions {
                 guard let raw = next.shortcutString(action, of: plugin) else { continue }
                 let label = "\(plugin.name): \(action.title)"
@@ -150,14 +153,58 @@ final class AppState: ObservableObject {
         applyHotkeys()
     }
 
+    // MARK: Shortcut overview & conflicts
+
+    struct ShortcutSlot: Identifiable {
+        let plugin: Plugin
+        let action: PluginAction
+        let id: String
+        /// "Plugin: Action", or just the action for the app's own shortcuts.
+        let label: String
+
+        @MainActor init(plugin: Plugin, action: PluginAction) {
+            self.plugin = plugin
+            self.action = action
+            id = plugin.id + "." + action.id
+            label = plugin.id == CorePlugin.pluginID ? action.title : "\(plugin.name): \(action.title)"
+        }
+    }
+
+    /// Every action that can have a shortcut: the app's own first, then each plugin's (on or off).
+    var shortcutSlots: [ShortcutSlot] {
+        ([core] + plugins).flatMap { plugin in plugin.actions.map { ShortcutSlot(plugin: plugin, action: $0) } }
+    }
+
+    func shortcut(of slot: ShortcutSlot) -> Shortcut? { config.shortcut(slot.action, of: slot.plugin) }
+
+    /// Other actions (in any plugin, even switched-off ones) already using `shortcut`.
+    func slots(using shortcut: Shortcut, excluding slot: ShortcutSlot?) -> [ShortcutSlot] {
+        shortcutSlots.filter { $0.id != slot?.id && self.shortcut(of: $0) == shortcut }
+    }
+
+    /// Shortcuts that more than one action uses right now (for example after a hand edit while a plugin was off).
+    var duplicateShortcuts: [(Shortcut, [ShortcutSlot])] {
+        var groups: [Shortcut: [ShortcutSlot]] = [:]
+        for slot in shortcutSlots { if let s = shortcut(of: slot) { groups[s, default: []].append(slot) } }
+        return groups.filter { $0.value.count > 1 }.sorted { $0.key.display < $1.key.display }.map { ($0.key, $0.value) }
+    }
+
+    /// Sets `shortcut` for `slot`, first clearing it from the actions that held it.
+    func assign(_ shortcut: Shortcut?, to slot: ShortcutSlot, replacing others: [ShortcutSlot] = []) throws {
+        try update { cfg in
+            for other in others { cfg.setShortcut(nil, for: other.action, of: other.plugin) }
+            cfg.setShortcut(shortcut, for: slot.action, of: slot.plugin)
+        }
+    }
+
     // MARK: Hotkeys
 
     func applyHotkeys() {
         guard !hotkeysPaused else { return }
         var bindings: [(Shortcut, String, () -> Void)] = []
-        for plugin in enabledPlugins {
+        for plugin in [core] + enabledPlugins {
             for action in plugin.actions {
-                guard let s = config.shortcut(action, of: plugin) else { continue }
+                guard plugin.isAvailable(action), let s = config.shortcut(action, of: plugin) else { continue }
                 bindings.append((s, action.title, { [weak plugin] in plugin?.perform(action) }))
             }
         }

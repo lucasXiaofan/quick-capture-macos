@@ -80,6 +80,9 @@ struct Shortcut: Hashable {
         (control ? "⌃" : "") + (option ? "⌥" : "") + (shift ? "⇧" : "") + (command ? "⌘" : "") + keyLabel
     }
 
+    /// ⌘ or ⌘⇧ plus a printable key: the family most apps use for their own menu commands.
+    var overlapsAppCommands: Bool { command && !option && !control && menuKeyEquivalent != nil }
+
     var carbonModifiers: UInt32 {
         UInt32((command ? cmdKey : 0) | (shift ? shiftKey : 0) | (option ? optionKey : 0) | (control ? controlKey : 0))
     }

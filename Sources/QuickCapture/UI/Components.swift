@@ -93,3 +93,60 @@ struct ShortcutRecorder: View {
         if recording { recording = false; state.pauseHotkeys(false) }
     }
 }
+
+
+/// One action's shortcut with conflict handling: recording a shortcut another action already uses asks
+/// whether to take it over, and ⌘-only combinations get a heads-up about clashing with other apps.
+struct ShortcutRow: View {
+    @ObservedObject var state: AppState
+    let slot: AppState.ShortcutSlot
+    @State private var pending: (shortcut: Shortcut, others: [AppState.ShortcutSlot])?
+    @State private var error: String?
+
+    var body: some View {
+        let current = state.shortcut(of: slot)
+        let duplicates = current.map { state.slots(using: $0, excluding: slot) } ?? []
+        LabeledContent {
+            VStack(alignment: .trailing, spacing: 3) {
+                ShortcutRecorder(state: state, shortcut: current) { new in record(new) }
+                if !duplicates.isEmpty {
+                    Label("Also used by \(duplicates.map(\.label).joined(separator: ", "))", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange)
+                } else if current?.overlapsAppCommands == true {
+                    Label("Many apps use ⌘ shortcuts like this for their own commands; this one takes priority over them. ⌃⌥ combinations rarely clash.",
+                          systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                }
+                if let error { Text(error).font(.caption).foregroundStyle(.orange) }
+            }
+        } label: {
+            Label(slot.action.title, systemImage: slot.action.symbol)
+        }
+        .alert("Shortcut already in use", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
+            Button("Replace") { confirmReplace() }
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: {
+            if let pending {
+                Text("\(pending.shortcut.display) is used by \(pending.others.map(\.label).joined(separator: ", ")). "
+                     + "Replace it, so it only triggers “\(slot.action.title)”?")
+            }
+        }
+    }
+
+    private func record(_ new: Shortcut?) {
+        error = nil
+        guard let new else { apply(nil, replacing: []); return }
+        let others = state.slots(using: new, excluding: slot)
+        if others.isEmpty { apply(new, replacing: []) } else { pending = (new, others) }
+    }
+
+    private func confirmReplace() {
+        guard let pending else { return }
+        self.pending = nil
+        apply(pending.shortcut, replacing: pending.others)
+    }
+
+    private func apply(_ shortcut: Shortcut?, replacing others: [AppState.ShortcutSlot]) {
+        do { try state.assign(shortcut, to: slot, replacing: others) } catch { self.error = error.localizedDescription }
+    }
+}

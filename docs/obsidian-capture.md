@@ -30,4 +30,4 @@ The first of these that applies:
 
 If Obsidian is closed or its CLI doesn't respond, the capture is appended straight to today's diary file.
 
-Screenshots are saved as `capture-YYYYMMDD-HHmmss.png` in Obsidian's *Default location for new attachments* and embedded as `![[…]]`. Until a save is confirmed, a copy is kept in `~/Library/Application Support/Obsidian Quick Capture/recovery`, and the menu shows **Unsaved Captures** if any are left.
+Screenshots are saved as `capture-YYYYMMDD-HHmmss.png` in Obsidian's *Default location for new attachments* and embedded as `![[…]]`. Until a save is confirmed, a copy is kept in `~/Library/Application Support/Quick Capture/recovery`, and the menu shows **Unsaved Captures** if any are left.

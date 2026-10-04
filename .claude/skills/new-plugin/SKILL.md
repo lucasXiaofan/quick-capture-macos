@@ -45,7 +45,7 @@ Read these first — they are short and define the contract:
    node tests/bridge.test.cjs && node tests/render.test.cjs
    scripts/build.sh --install
    ```
-   Then confirm: `~/Library/Application Support/Obsidian Quick Capture/config.json` gained a
+   Then confirm: `~/Library/Application Support/Quick Capture/config.json` gained a
    `plugins.<id>` entry with `enabled`, `hotkeys` and your settings; the plugin appears in
    Settings (sidebar) with working toggle and shortcut recorders; the shortcut fires from any app.
    If the plugin has pure logic (parsers, formatters), add a test under `tests/` or a small
@@ -134,7 +134,7 @@ private struct ExampleSettingsView: View {
 - **No network dependencies at runtime** for UI: vendor web libraries into `Resources/<id>/vendor/`
   (see `scripts/vendor.sh`) instead of loading from a CDN.
 - **Shortcuts:** `defaultShortcut` needs ⌘, ⌥ or ⌃ (function keys excepted) and must not clash with
-  shipped defaults — currently ⌘⇧I, ⌘⇧J, ⌥⇧⌘I, ⌥⇧⌘J (Obsidian Capture) and ⌃⌥Space (AI Chat).
+  shipped defaults — currently ⌘⇧I, ⌘⇧J, ⌥⇧⌘I, ⌥⇧⌘J (Obsidian Capture), ⌃⌥Space (AI Chat), ⌃⌥, (Open Settings), and Nose Control's (see docs/nose-control.md). Settings → Shortcuts shows them all.
   Prefer `nil` (user assigns one) over grabbing a combination other apps use; Carbon hotkeys
   swallow the key press system-wide.
 - **Main thread:** `perform` runs on the main actor. Do slow work in `Task {}` / `Shell.run` /

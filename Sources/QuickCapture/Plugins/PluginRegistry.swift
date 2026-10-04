@@ -5,6 +5,8 @@ enum PluginRegistry {
         [
             ObsidianCapturePlugin(),
             AIChatPlugin(),
+            NoseControlPlugin(),
+            KeyboardMousePlugin(),
         ]
     }
 }

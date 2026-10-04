@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds "Obsidian Quick Capture.app" and a drag-to-Applications DMG in ./dist.
+# Builds "Quick Capture.app" and a drag-to-Applications DMG in ./dist.
 #
 #   scripts/build.sh                 # sign with your best available identity
 #   scripts/build.sh --install       # also copy into /Applications and launch it
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-NAME="Obsidian Quick Capture"
+NAME="Quick Capture"
 BUNDLE_ID="${BUNDLE_ID:-com.xiaofanlu.ObsidianQuickCapture}"
 VERSION="3.0.1"
 BUILD_NUMBER="$(date +%Y%m%d%H%M)"
@@ -32,7 +32,7 @@ else
 fi
 
 echo "▸ Assembling $NAME.app"
-rm -rf "$APP"
+rm -rf "$APP" "$DIST/Obsidian Quick Capture.app" "$DIST/Obsidian Quick Capture.dmg"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/QuickCapture"
 # Each plugin's files live in Resources/<plugin id>/.
@@ -64,6 +64,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSCameraUsageDescription</key><string>Nose Control reads the camera on this Mac to follow where your nose points. Video never leaves your Mac.</string>
   <key>NSHumanReadableCopyright</key><string>Shortcut-driven capture and AI chat for macOS.</string>
 </dict>
 </plist>
@@ -82,7 +83,7 @@ if [[ -z "$IDENTITY" ]]; then
   IDENTITY="-"
 fi
 echo "  identity: $IDENTITY"
-SIGN_ARGS=(--force --options runtime --sign "$IDENTITY")
+SIGN_ARGS=(--force --options runtime --entitlements "$ROOT/scripts/entitlements.plist" --sign "$IDENTITY")
 [[ "$IDENTITY" == Developer\ ID* ]] && SIGN_ARGS+=(--timestamp)
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --strict "$APP"
@@ -121,7 +122,7 @@ if [[ "${1:-}" == "--install" ]]; then
   osascript -e "tell application id \"$BUNDLE_ID\" to quit" 2>/dev/null || true
   pkill -x QuickCapture 2>/dev/null || true
   sleep 0.5
-  rm -rf "/Applications/$NAME.app"
+  rm -rf "/Applications/$NAME.app" "/Applications/Obsidian Quick Capture.app"   # the app's name before 3.1
   cp -R "$APP" /Applications/
   open "/Applications/$NAME.app"
   echo "✓ Installed and launched /Applications/$NAME.app"

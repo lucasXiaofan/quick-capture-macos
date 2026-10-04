@@ -12,7 +12,7 @@ final class CaptureController {
     init(plugin: ObsidianCapturePlugin) { self.plugin = plugin }
 
     func run(_ action: CaptureAction) {
-        guard !busy else { return }
+        guard !busy else { CapturePanel.bringToFront(); return }
         busy = true
         Task {
             defer { busy = false }
@@ -72,15 +72,14 @@ final class CaptureController {
             preferDiary: preferDiary,
             offline: !live)
         guard let result = await CapturePanel.present(request) else {
-            if live { _ = try? await bridge.call("forget", ["id": id]) }
-            return
+            return  // The stale snapshot is pruned by the next one; no extra CLI call (each flashes a Dock icon).
         }
 
         let comment = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let targetNote = (result.toDiary ? nil : request.notePath) ?? diaryPath
-        var block = "\n"
+        // Every capture starts with the time it was taken (when the shortcut was pressed).
+        var block = "\n**" + MomentFormat.format(layout.now, "HH:mm") + "**" + (comment.isEmpty ? "" : " " + comment) + "\n"
         if let screenshot { block += try layout.storeScreenshot(screenshot, forNote: targetNote) + "\n" }
-        if !comment.isEmpty { block += comment + "\n" }
 
         // Keep a copy until the save is confirmed.
         try? FileManager.default.createDirectory(at: ObsidianCapturePlugin.recovery, withIntermediateDirectories: true)
@@ -105,16 +104,17 @@ final class CaptureController {
 
     private func saveLive(bridge: ObsidianBridge, id: String, diaryPath: String, template: String,
                           text: String, toDiary: Bool) async throws -> (path: String, cursor: Bool) {
-        _ = try await bridge.call("save", ["id": id, "diary_path": diaryPath, "template": template,
-                                           "text": text, "force_diary": toDiary])
-        for _ in 0..<15 {
-            if let status = try await bridge.call("status", ["id": id]) as? [String: Any],
-               status["pending"] as? Bool != true {
-                _ = try? await bridge.call("forget", ["id": id])
-                if let error = status["error"] as? String { throw AppError(error) }
-                return (status["path"] as? String ?? diaryPath, status["cursor"] as? Bool ?? false)
+        // When the note is open, `save` finishes in that same call; otherwise poll `status`.
+        var reply = try await bridge.call("save", ["id": id, "diary_path": diaryPath, "template": template,
+                                                   "text": text, "force_diary": toDiary]) as? [String: Any]
+        for attempt in 0...15 {
+            if let r = reply, r["pending"] as? Bool != true {
+                if let error = r["error"] as? String { throw AppError(error) }
+                return (r["path"] as? String ?? diaryPath, r["cursor"] as? Bool ?? false)
             }
-            try await Task.sleep(nanoseconds: 100_000_000)
+            if attempt == 15 { break }
+            try await Task.sleep(nanoseconds: 150_000_000)
+            reply = try await bridge.call("status", ["id": id]) as? [String: Any]
         }
         throw AppError("Obsidian didn't confirm the save in time. Check the note before retrying.")
     }

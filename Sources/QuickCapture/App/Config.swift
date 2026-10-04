@@ -1,8 +1,18 @@
 import Foundation
 
 enum Paths {
-    static let home = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/Obsidian Quick Capture", isDirectory: true)
+    private static let support = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support", isDirectory: true)
+    static let home = support.appendingPathComponent("Quick Capture", isDirectory: true)
+    /// Before 3.1 the app was called "Obsidian Quick Capture" and kept its data in a folder of that name.
+    private static let legacyHome = support.appendingPathComponent("Obsidian Quick Capture", isDirectory: true)
+
+    /// Moves the old data folder (config, recovery copies, plugin data) to the new name, once.
+    static func migrateLegacyHome() {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: legacyHome.path), !fm.fileExists(atPath: home.path) else { return }
+        try? fm.moveItem(at: legacyHome, to: home)
+    }
     static let config = home.appendingPathComponent("config.json")
     static let legacyAgent = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/LaunchAgents/local.obsidian.quickcapture.plist")
@@ -115,7 +125,7 @@ struct AppConfig: Equatable {
         var next = self
         for plugin in registered {
             var entry = next.plugins[plugin.id] ?? [:]
-            if entry["enabled"] == nil { entry["enabled"] = .bool(plugin.enabledByDefault) }
+            if entry["enabled"] == nil, plugin.id != CorePlugin.pluginID { entry["enabled"] = .bool(plugin.enabledByDefault) }
             var hotkeys = entry["hotkeys"]?.object ?? [:]
             for action in plugin.actions where hotkeys[action.id] == nil {
                 hotkeys[action.id] = .string(action.defaultShortcut ?? "")

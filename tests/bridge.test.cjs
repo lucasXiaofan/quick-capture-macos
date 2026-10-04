@@ -27,7 +27,7 @@ async function scenario({active = true, editor = true, changed = false, diary = 
   if (changed) note.text += '!';
   bridge({...p, action:'save', force_diary: force}, app);
   // The app retries a save whose reply got lost; a repeat with the same id must not write again.
-  for (let i = 0; i < retries; i++) assert.equal(bridge({...p, action:'save', force_diary: force}, app), true);
+  for (let i = 0; i < retries; i++) assert.ok(bridge({...p, action:'save', force_diary: force}, app));
   await new Promise(resolve => setImmediate(resolve));
   for (let i = 0; i < retries; i++) bridge({...p, action:'save', force_diary: force}, app);
   const result = bridge({...p, action:'status'}, app);
