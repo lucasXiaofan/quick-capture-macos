@@ -92,8 +92,10 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     private let selfie = SelfieCamera()
     /// Meeting recordings being compressed or transcribed, by file name.
     @Published private(set) var transcribing: Set<String> = []
-    /// The dashboard's Arrange Tags sheet is open.
-    @Published var arrangingTags = false
+    /// The dashboard's Tag Order panel is showing. Open by default; remembered on this Mac.
+    @Published var arrangingTags = UserDefaults.standard.object(forKey: "MediaCaptureTagOrderPanel") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(arrangingTags, forKey: "MediaCaptureTagOrderPanel") }
+    }
     private var dashboard: NSWindow?
     /// Which library the dashboard shows; lets the menu open it on Selfies or Recordings.
     let dashboardTab = DashboardTab()
