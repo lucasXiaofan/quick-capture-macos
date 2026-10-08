@@ -64,7 +64,7 @@ Everything runs on this Mac; nothing is uploaded. **Engine** in Settings (`video
 
 | Engine | Install | Chinese + English mixed | Speed (Apple silicon) |
 |---|---|---|---|
-| **whisper.cpp** | `brew install whisper-cpp` | Good | Fast: runs on the GPU (Metal); the recommended engine |
+| **whisper.cpp** | `brew install whisper-cpp` | Good | ~15× real time (measured with `small`), ~4 min per hour; the recommended engine |
 | **OpenAI Whisper** | `brew install openai-whisper` | Good | Slow (CPU): ~0.7× real time with `small`, so ~45 min per hour |
 | **Apple Speech** (`SpeechTranscriber`) | Built into macOS 26; the language model downloads once | One language per recording: in Chinese mode English words mostly come through, but less reliably | ~4× real time (measured), ~15 min per hour |
 

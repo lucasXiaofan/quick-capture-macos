@@ -179,10 +179,11 @@ enum Transcriber {
         return out
     }
 
-    /// Generous: whisper on a slow Mac can take longer than the recording itself.
-    private static func timeout(for audio: URL) async -> TimeInterval {
+    /// Generous: Python Whisper on a slow Mac can take longer than the recording itself. whisper.cpp runs
+    /// ~15× faster than real time on Apple silicon, so a much shorter limit lets `auto` fall back sooner if it hangs.
+    private static func timeout(for audio: URL, factor: Double = 4) async -> TimeInterval {
         let seconds = (try? await AVURLAsset(url: audio).load(.duration).seconds) ?? 3600
-        return max(600, (seconds.isFinite ? seconds : 3600) * 4)
+        return max(300, (seconds.isFinite ? seconds : 3600) * factor)
     }
 
     private static func runWhisperCpp(_ audio: URL, cli: String, model: String, options: Options) async throws -> Result {
@@ -197,7 +198,7 @@ enum Transcriber {
                     "-t", "\(max(2, ProcessInfo.processInfo.activeProcessorCount - 2))"]
         if !options.prompt.isEmpty { args += ["--prompt", options.prompt] }
         let out = try await Shell.run(cli, args, environment: await LoginEnvironment.shared.environment(for: cli),
-                                      timeout: await timeout(for: audio))
+                                      timeout: await timeout(for: audio, factor: 1))
         guard out.status == 0, let data = try? Data(contentsOf: json) else {
             throw AppError(lastLine(out.stderr) ?? "whisper.cpp failed (exit \(out.status)).")
         }
