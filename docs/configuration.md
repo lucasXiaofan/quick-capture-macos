@@ -93,6 +93,7 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
 | `video_notes.volume` | Playback volume in percent, 25–800 (default 100), on top of the Mac's volume |
 | `video_notes.screen_camera_size` | Screen + camera recordings: side of the camera square in percent of the video height, 10–50 (default 25) |
 | `video_notes.screen_camera_corner` | Screen + camera recordings: `bottom_left` (default), `bottom_right`, `top_left` or `top_right` |
+| `video_notes.untagged_last` | Dashboard: show the Untagged column after the tags instead of first (default `false`). The tag order itself is `video_notes.tags` |
 | `video_notes.selfie_prompt`, `meeting_prompt` | Ask for a tag and note after each selfie / when a meeting recording stops (default `true`) |
 | `video_notes.selfie_mirror` | Save selfies mirrored, as the preview shows them (default `true`) |
 | `video_notes.meeting_system_audio` | Meeting recordings also capture the Mac's sound, i.e. the other people (default `true`; needs Screen Recording) |

@@ -177,13 +177,12 @@ final class DashboardTab: ObservableObject {
 /// (tags are shared) plus Untagged, newest first. Drag a card to another column to retag it. Videos also have
 /// the quick-play slots on top; recordings show their transcript.
 struct VideoDashboardView: View {
-    let plugin: VideoNotesPlugin
+    @ObservedObject var plugin: VideoNotesPlugin
     @ObservedObject var tab: DashboardTab
     @ObservedObject var state: AppState
     @ObservedObject var recorder: VideoRecorder
     @ObservedObject var meeting: MeetingRecorder
 
-    @State private var managingTags = false
     @State private var search = ""
 
     var body: some View {
@@ -196,7 +195,7 @@ struct VideoDashboardView: View {
         }
         .frame(minWidth: 760, minHeight: 460)
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(isPresented: $managingTags) { ManageTagsView(plugin: plugin, state: state) { managingTags = false } }
+        .sheet(isPresented: $plugin.arrangingTags) { ManageTagsView(plugin: plugin, state: state) { plugin.arrangingTags = false } }
     }
 
     private var toolbar: some View {
@@ -225,10 +224,12 @@ struct VideoDashboardView: View {
                 VolumeSlider(plugin: plugin, compact: true)
                     .help("Playback volume on top of your Mac's volume")
             }
+            Button { plugin.arrangingTags = true } label: { Label("Arrange Tags", systemImage: "list.number") }
+                .help("Rank the tags: important ones first")
             CaptureButton(plugin: plugin, kind: tab.kind, recorder: recorder, meeting: meeting)
             Menu {
                 Button("New Tag…") { plugin.promptNewTag() }
-                Button("Manage Tags…") { managingTags = true }
+                Button("Arrange Tags…") { plugin.arrangingTags = true }
                 Divider()
                 if tab.kind == .video { Button("Compress All Videos") { plugin.compressAll() } }
                 if tab.kind == .audio { Button("Transcribe a Recording Again…") { plugin.transcribeAgain() } }
@@ -268,7 +269,10 @@ private struct MediaBoard: View {
     @ObservedObject var recorder: VideoRecorder
     @ObservedObject var meeting: MeetingRecorder
 
-    private var columns: [String?] { [nil] + plugin.allTags.map { Optional($0) } }
+    private var columns: [String?] {
+        let tags = plugin.allTags.map { Optional($0) }
+        return plugin.settings.untaggedLast ? tags + [nil] : [nil] + tags
+    }
 
     var body: some View {
         if store.videos.isEmpty {
@@ -380,16 +384,18 @@ private struct QuickSlotTile: View {
             }
         }
         .dropDestination(for: String.self) { dropped, _ in
-            guard let file = dropped.first(where: { !$0.hasPrefix(VideoColumn.tagPrefix) }) else { return false }
+            guard let file = dropped.first else { return false }
             store.setSlot(slot, for: file)
             return true
         } isTargeted: { targeted = $0 }
     }
 }
 
-/// Reorder (drag rows), add, and delete tags; deleting asks first and keeps the videos.
+/// Rank the tags: the dashboard shows columns in this order, so the important ones come first.
+/// Select one or several, then move them with the buttons or ⌘↑ / ⌘↓ (⌥⌘↑ / ⌥⌘↓ for top / bottom).
+/// Also adds and deletes tags (deleting asks first and keeps the items).
 private struct ManageTagsView: View {
-    let plugin: VideoNotesPlugin
+    @ObservedObject var plugin: VideoNotesPlugin
     @ObservedObject var state: AppState
     let close: () -> Void
     @State private var selection = Set<String>()
@@ -397,25 +403,37 @@ private struct ManageTagsView: View {
 
     var body: some View {
         let tags = plugin.allTags
+        let counts = plugin.tagCounts
         VStack(alignment: .leading, spacing: 12) {
-            Text("Tags").font(.headline)
-            Text("Drag to reorder (the dashboard follows). Select several to delete them together.")
-                .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Arrange Tags").font(.headline)
+                Text("The dashboard shows tags in this order. Select one or more (⌘- or ⇧-click) and move them.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             List(selection: $selection) {
-                ForEach(tags, id: \.self) { tag in
-                    HStack {
+                ForEach(Array(tags.enumerated()), id: \.element) { index, tag in
+                    HStack(spacing: 8) {
+                        Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 20, alignment: .trailing)
                         Text(tag)
                         Spacer()
-                        Text("\(MediaKind.allCases.flatMap { plugin.store($0).videos }.filter { $0.tag == tag }.count)").foregroundStyle(.secondary)
+                        Text("\(counts[tag] ?? 0)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
-                }
-                .onMove { source, destination in
-                    var next = tags
-                    next.move(fromOffsets: source, toOffset: destination)
-                    plugin.setTags(next)
+                    .tag(tag)
                 }
             }
-            .frame(height: 220)
+            .frame(height: 260)
+            HStack(spacing: 6) {
+                move("Top", "arrow.up.to.line", .top, key: .upArrow, modifiers: [.command, .option])
+                move("Up", "arrow.up", .up, key: .upArrow, modifiers: .command)
+                move("Down", "arrow.down", .down, key: .downArrow, modifiers: .command)
+                move("Bottom", "arrow.down.to.line", .bottom, key: .downArrow, modifiers: [.command, .option])
+                Spacer()
+                Button("Sort by Most Used") { plugin.sortTagsByUse() }
+                    .help("Most items first")
+            }
+            .controlSize(.small)
+            Toggle("Show Untagged as the last column", isOn: Binding(get: { plugin.settings.untaggedLast },
+                                                                    set: { v in try? plugin.update { $0.untaggedLast = v } }))
             HStack {
                 TextField("New tag", text: $newTag).onSubmit(add)
                 Button("Add", action: add).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -430,7 +448,15 @@ private struct ManageTagsView: View {
             }
         }
         .padding(16)
-        .frame(width: 360)
+        .frame(width: 400)
+    }
+
+    private func move(_ title: String, _ symbol: String, _ move: VideoNotesPlugin.TagMove,
+                      key: KeyEquivalent, modifiers: EventModifiers) -> some View {
+        Button { plugin.moveTags(selection, move) } label: { Label(title, systemImage: symbol) }
+            .keyboardShortcut(key, modifiers: modifiers)
+            .disabled(selection.isEmpty)
+            .help("Move the selected tags \(title.lowercased())")
     }
 
     private func add() {
@@ -446,7 +472,6 @@ struct VideoColumn: View {
     let tag: String?
     var search = ""
     @State private var targeted = false
-    static let tagPrefix = "tag:"
 
     var body: some View {
         let all = store.videos.filter { $0.tag == tag }
@@ -468,14 +493,19 @@ struct VideoColumn: View {
                 Text(formattedSize(all.reduce(0) { $0 + $1.size })).font(.caption2).foregroundStyle(.tertiary)
                 if let tag {
                     Menu {
+                        Button("Move to Front") { plugin.moveTags([tag], .top) }
+                        Button("Move Left") { plugin.moveTags([tag], .up) }
+                        Button("Move Right") { plugin.moveTags([tag], .down) }
+                        Button("Move to End") { plugin.moveTags([tag], .bottom) }
+                        Divider()
+                        Button("Arrange Tags…") { plugin.arrangingTags = true }
+                        Divider()
                         Button("Delete Tag…", role: .destructive) { plugin.deleteTags([tag]) }
                     } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 }
             }
             .padding(.horizontal, 2)
-            .contentShape(Rectangle())
-            .modifier(TagDrag(tag: tag))
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(items) { item in
@@ -499,24 +529,9 @@ struct VideoColumn: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.secondary.opacity(targeted ? 0.2 : 0.07)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(targeted ? Color.accentColor : .clear, lineWidth: 2))
         .dropDestination(for: String.self) { dropped, _ in
-            for item in dropped {
-                if item.hasPrefix(Self.tagPrefix) {
-                    if let tag { plugin.moveTag(String(item.dropFirst(Self.tagPrefix.count)), to: tag) }
-                } else {
-                    store.update(item) { $0.tag = tag }
-                }
-            }
+            for file in dropped { store.update(file) { $0.tag = tag } }
             return !dropped.isEmpty
         } isTargeted: { targeted = $0 }
-    }
-}
-
-/// Column headers of real tags can be dragged onto another column to reorder.
-private struct TagDrag: ViewModifier {
-    let tag: String?
-
-    func body(content: Content) -> some View {
-        if let tag { content.draggable(VideoColumn.tagPrefix + tag) } else { content }
     }
 }
 

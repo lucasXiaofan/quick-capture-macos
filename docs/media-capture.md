@@ -86,7 +86,7 @@ Pick an existing tag or type a new one (each video has one tag), optionally add 
 
 ## Dashboard
 
-Three tabs, **Videos**, **Selfies** and **Recordings**, each with its count. The header has search, the playback volume, a capture button for the open tab (**Record**, **Take Selfie**, **Record Meeting**; **Stop** while recording) and **⋯** for tags and Finder.
+Three tabs, **Videos**, **Selfies** and **Recordings**, each with its count. The header has search, the playback volume, **Arrange Tags** (see [Tags](#tags)), a capture button for the open tab (**Record**, **Take Selfie**, **Record Meeting**; **Stop** while recording) and **⋯** for tags and Finder.
 
 Each tab is a Kanban board with one column per tag (plus **Untagged**), newest at the top; the tags are shared by all three. Drag a card to another column to change its tag. **⋯** on a card, or right-click, for **Edit Tag & Note**, **Show in Finder** and **Move to Trash**. The header and each column show how many items there are and how much disk space they use, so you know when to clean up.
 
@@ -100,7 +100,11 @@ Recordings from the Mac's microphone are often quiet. **Volume** (Settings → M
 
 ## Tags
 
-Tags are columns. **New Tag** (dashboard header) adds one next to Untagged; **drag a column header** onto another column to reorder. **⋯** on a column deletes that tag, and **Manage Tags…** lets you reorder, add, and select several to delete. Deleting always asks first, and the videos are kept and move to Untagged. There are no built-in tags.
+Tags are columns, shared by Videos, Selfies and Recordings, and their order is the dashboard's order: rank the important ones first.
+
+- **Arrange Tags** (the numbered-list button in the dashboard header, or **⋯ → Arrange Tags…**) shows every tag with its rank and how many items use it. Select one or several (⌘- or ⇧-click) and press **Top**, **Up**, **Down** or **Bottom** (⌘↑ / ⌘↓ move up and down; ⌥⌘↑ / ⌥⌘↓ to the top and bottom). Several selected tags move together and keep their order. **Sort by Most Used** puts the busiest tags first. **Show Untagged as the last column** moves Untagged after your tags (`video_notes.untagged_last`). The same window adds tags and deletes the selected ones.
+- **⋯ on a column** has **Move to Front**, **Move Left**, **Move Right** and **Move to End** for that one tag.
+- **New Tag** (dashboard header) adds one. Deleting always asks first; the items are kept and move to Untagged. There are no built-in tags.
 
 ## Compression
 

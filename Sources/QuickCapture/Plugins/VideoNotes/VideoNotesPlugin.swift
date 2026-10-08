@@ -26,6 +26,8 @@ struct VideoNotesSettings: PluginSettings {
     /// After a selfie / a meeting recording, ask for a tag and note (Skip leaves it untagged).
     var selfiePrompt = true
     var meetingPrompt = true
+    /// Dashboard: the Untagged column after the tags instead of before them.
+    var untaggedLast = false
     /// Speech to text once a meeting recording has stopped; see Transcriber.
     var transcriptionEngine = Transcriber.Engine.auto.rawValue
     /// Whisper language code ("zh", "en", …) or "auto".
@@ -45,6 +47,7 @@ struct VideoNotesSettings: PluginSettings {
         case meetingSystemAudio = "meeting_system_audio", meetingCompression = "meeting_compression"
         case meetingIndicator = "meeting_indicator"
         case selfiePrompt = "selfie_prompt", meetingPrompt = "meeting_prompt"
+        case untaggedLast = "untagged_last"
         case transcriptionEngine = "transcription_engine", transcriptionLanguage = "transcription_language"
         case transcriptionPrompt = "transcription_prompt", transcriptionModel = "transcription_model"
     }
@@ -89,6 +92,8 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     private let selfie = SelfieCamera()
     /// Meeting recordings being compressed or transcribed, by file name.
     @Published private(set) var transcribing: Set<String> = []
+    /// The dashboard's Arrange Tags sheet is open.
+    @Published var arrangingTags = false
     private var dashboard: NSWindow?
     /// Which library the dashboard shows; lets the menu open it on Selfies or Recordings.
     let dashboardTab = DashboardTab()
@@ -600,12 +605,37 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         setTags([name] + allTags)
     }
 
-    /// Puts `name` in the position `target` has now.
-    func moveTag(_ name: String, to target: String) {
+    enum TagMove { case top, up, down, bottom }
+
+    /// Moves the given tags as a group, keeping their order among themselves.
+    func moveTags(_ names: Set<String>, _ move: TagMove) {
         var tags = allTags
-        guard name != target, let to = tags.firstIndex(of: target), let from = tags.firstIndex(of: name) else { return }
-        tags.remove(at: from)
-        tags.insert(name, at: min(to, tags.count))
+        let selected = { (i: Int) in names.contains(tags[i]) }
+        switch move {
+        case .top: tags = tags.filter(names.contains) + tags.filter { !names.contains($0) }
+        case .bottom: tags = tags.filter { !names.contains($0) } + tags.filter(names.contains)
+        case .up:
+            for i in tags.indices.dropFirst() where selected(i) && !selected(i - 1) { tags.swapAt(i, i - 1) }
+        case .down:
+            for i in tags.indices.dropLast().reversed() where selected(i) && !selected(i + 1) { tags.swapAt(i, i + 1) }
+        }
+        if tags != allTags { setTags(tags) }
+    }
+
+    /// Items per tag across videos, selfies and recordings.
+    var tagCounts: [String: Int] {
+        var counts: [String: Int] = [:]
+        for kind in MediaKind.allCases { for item in store(kind).videos { if let tag = item.tag { counts[tag, default: 0] += 1 } } }
+        return counts
+    }
+
+    /// Most used first; ties keep their current order.
+    func sortTagsByUse() {
+        let counts = tagCounts
+        let tags = allTags.enumerated().sorted { a, b in
+            let (ca, cb) = (counts[a.element] ?? 0, counts[b.element] ?? 0)
+            return ca != cb ? ca > cb : a.offset < b.offset
+        }.map(\.element)
         setTags(tags)
     }
 
