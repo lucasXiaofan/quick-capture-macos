@@ -21,18 +21,30 @@ Two permissions, both on the plugin's Settings page:
    centre, then your **comfortable** limit to the left, right, up and down.
 4. Move the pointer with your head. Press ⌃⌥N again to stop.
 
+## Three panels
+
+The screen is split into three big panels: **columns** (left | middle | right) by default, or **rows**.
+
+- Press **1**, **2** or **3**: the pointer jumps to the **middle of that panel**, and your current head pose becomes that panel's centre. From there your nose moves the pointer **inside the panel**, so small head movements give fine control.
+- Press the **Whole Screen** shortcut (unassigned by default) to go back to moving across the whole screen.
+- Faint dividers and big **1 · 2 · 3** numerals (shown with the cheat sheet) mark the three regions: 1 jumps to the middle of the left third, 2 to the exact centre, 3 to the middle of the right third. A green outline marks the active panel. The left/right/up/down limits you calibrated are scaled to the panel.
+
+The keys 1, 2 and 3 are **plain keys**, so they're only grabbed while nose control is running. Press **Pause** (⌥Space) to release them and type normally; press it again to resume.
+
 The calibration is saved, so the next start skips it. Press **⌃⌥C** to redo it (for example after moving your chair).
 
 ## Shortcuts
 
-All of these are configurable in Settings. Except for Start / Stop, they only exist while nose control is running, so ⌥↩ works normally in other apps otherwise.
+All of these are configurable in Settings (any key, with or without ⌘ ⌥ ⌃ — except Start / Stop, which needs a modifier). Except for Start / Stop, they only exist while nose control is running, so ⌥↩ and the plain keys work normally in other apps otherwise. While running, a cheat sheet in the bottom-left corner shows which key does what (turn it off in Settings).
 
 | Action | Default |
 |---|---|
 | Start / Stop | ⌃⌥N |
-| Left click (also confirms calibration steps) | ⌥↩ |
-| Right click | ⌥⇧↩ |
-| Double click | ⌃⌥↩ |
+| **Left click** (select, press; also confirms calibration steps) | ⌥↩ |
+| **Right click** (context menu) | ⌥⇧↩ |
+| **Double click** (open) | ⌃⌥↩ |
+| Jump to panel 1 / 2 / 3 | 1 / 2 / 3 |
+| Whole screen (leave panel) | — |
 | Pause / resume pointer | ⌥Space |
 | Sensitivity up / down | ⌥] / ⌥[ |
 | Recalibrate | ⌃⌥C |
@@ -45,7 +57,7 @@ All of these are configurable in Settings. Except for Start / Stop, they only ex
 
 ## Limits
 
-- It follows the primary display only.
+- It works on the display the pointer is on when you start it.
 - Anything that hides your nose (a mask) stops tracking.
 - A hand on the trackpad still moves the pointer; whichever moved last wins.
 

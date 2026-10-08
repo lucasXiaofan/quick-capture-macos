@@ -7,6 +7,8 @@ enum PluginRegistry {
             AIChatPlugin(),
             NoseControlPlugin(),
             KeyboardMousePlugin(),
+            VideoNotesPlugin(),
+            SkillManagerPlugin(),
         ]
     }
 }

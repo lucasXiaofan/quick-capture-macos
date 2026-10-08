@@ -5,22 +5,50 @@ description: Add a new shortcut-driven feature (plugin) to the Quick Capture mac
 
 # Creating a Quick Capture plugin
 
-Every feature in this app is a plugin: a Swift class that declares **actions** (things a global
-shortcut can trigger). The core app gives every plugin, for free:
+## The idea
+
+Every feature in this app is a plugin: a Swift class that **declares** what it offers — actions,
+settings, setup steps, menu priorities — and the core decides where those appear. A plugin never
+builds the menu bar menu, the Settings window, hotkeys or config.json itself; it describes itself and
+reacts to `perform(_:)`. That's why switching a plugin off removes it everywhere at once (menu,
+shortcuts, Settings) with no plugin code involved, and why a new plugin only touches its own folder
+plus one line in `PluginRegistry`.
+
+The core gives every plugin, for free:
 
 - an on/off switch, stored in `config.json` and shown in Settings and onboarding;
 - a shortcut recorder per action, conflict checking across all plugins, and system-wide hotkeys;
-- menu-bar items for its actions;
+- a place in the menu bar menu (see *Where things show up*);
 - typed settings persisted in `config.json` (hand-edits apply live);
-- a Settings page (`PluginPage`) that hosts the plugin's own setup steps and settings sections.
+- a Settings page (`PluginPage`) that hosts the plugin's own overview, setup steps and settings sections.
+
+## Where things show up
+
+| Plugin declares | Appears in |
+|---|---|
+| `actions` | Settings → shortcut recorder each; Settings → Shortcuts page; the plugin's menu submenu |
+| `primaryActions()` (default: first action) | **Top of the menu bar menu.** 1–2 per plugin; the core shows 7 rows at most in total, giving every enabled plugin its first row before anyone gets a second |
+| `showsInMenu(_:)` | Hides an action from the menu entirely (shortcut still works) — per-slot variants, "Stop" while idle |
+| `menuAlerts()` | Top of the menu, only while something needs attention ("Unsaved Captures (3)…") |
+| `menuItems()` | **Plugins ▸ <name> ▸**, under the actions (toggles, "Open …"). A "<name> Settings…" link is added for you |
+| `overviewView()` | Top of the plugin's Settings page — the thing people come to the page for (e.g. Open Dashboard) |
+| `setupView()`, `setupIssues`, `isReady` | Onboarding, Settings → Setup, and "Finish Setup…" in the menu |
+| `settingsView()` | The plugin's Settings page, below Shortcuts |
+
+The menu is rebuilt each time it opens (`App/StatusMenu.swift`), so these hooks may depend on state
+(e.g. Video Notes puts **Stop** first while recording). Pick primaries by asking "what would someone
+open the menu for?" — usually the window/dashboard or the main capture action — not by listing everything.
 
 Read these first — they are short and define the contract:
 
 - `Sources/QuickCapture/Plugins/Plugin.swift` — the `Plugin` protocol (every hook has a default).
 - `Sources/QuickCapture/Plugins/PluginRegistry.swift` — the list of shipped plugins.
 - `Sources/QuickCapture/App/Config.swift` — `AppConfig`, `PluginSettings`, `Paths`.
-- One existing plugin as a model: `Plugins/AIChat/AIChatPlugin.swift` (window + external CLIs) or
-  `Plugins/ObsidianCapture/ObsidianCapturePlugin.swift` (permissions, menu items, setup steps).
+- `Sources/QuickCapture/App/StatusMenu.swift` — how the menu is assembled from those hooks.
+- One existing plugin as a model: `Plugins/SkillManager/SkillManagerPlugin.swift` (smallest: one
+  action that opens a window), `Plugins/AIChat/AIChatPlugin.swift` (window + external CLIs),
+  `Plugins/VideoNotes/VideoNotesPlugin.swift` (state-dependent menu, overview, dashboard), or
+  `Plugins/ObsidianCapture/ObsidianCapturePlugin.swift` (permissions, menu items and alerts, setup steps).
 
 ## Steps
 
@@ -35,23 +63,28 @@ Read these first — they are short and define the contract:
 3. **Register it** — add `<Name>Plugin()` to `PluginRegistry.makeAll()`. Order there is the order
    in the menu and in Settings.
 
-4. **Resources** (HTML, JS, images, scripts) go in `Resources/<id>/`; `scripts/build.sh` copies the
+4. **Decide its menu presence** — which 1–2 actions are primary (`primaryActions()`), which are
+   shortcut-only (`showsInMenu` false), and whether anything belongs in `overviewView()`.
+
+5. **Resources** (HTML, JS, images, scripts) go in `Resources/<id>/`; `scripts/build.sh` copies the
    whole `Resources/` folder into the app. Load them with `Paths.resource("file.ext", plugin: id)`.
    Files the plugin writes at runtime go in `Paths.data(for: id)` (create the folder first).
 
-5. **Build and check**
+6. **Build and check**
    ```bash
    swift build
-   node tests/bridge.test.cjs && node tests/render.test.cjs
+   node tests/bridge.test.cjs && node tests/render.test.cjs && node tests/skills.test.cjs
    scripts/build.sh --install
    ```
    Then confirm: `~/Library/Application Support/Quick Capture/config.json` gained a
    `plugins.<id>` entry with `enabled`, `hotkeys` and your settings; the plugin appears in
-   Settings (sidebar) with working toggle and shortcut recorders; the shortcut fires from any app.
+   Settings (sidebar) with working toggle and shortcut recorders; the shortcut fires from any app;
+   the menu shows its primary action at the top and a submenu under **Plugins ▸**, and both
+   disappear when the plugin is switched off.
    If the plugin has pure logic (parsers, formatters), add a test under `tests/` or a small
    `swiftc` harness like `tests/chat_smoke` (see docs/development.md).
 
-6. **Document it** — add a row to the plugin table in `README.md`, a `docs/<plugin>.md` page
+7. **Document it** — add a row to the plugin table in `README.md`, a `docs/<plugin>.md` page
    (shortcuts, setup, options), its keys in `docs/configuration.md`, and a `CHANGELOG.md` entry.
 
 ## Template
@@ -96,6 +129,10 @@ final class ExamplePlugin: ObservableObject, Plugin {
         }
     }
 
+    // Top of the menu bar menu. The default (first action) is fine here; override when the most
+    // important thing isn't first, or depends on state.
+    // func primaryActions() -> [PluginAction] { [action("run")].compactMap { $0 } }
+
     func defaultSettings() -> [String: JSONValue] { encodeDefaults(ExampleSettings.self) }
 
     func validate(_ config: AppConfig) throws {
@@ -104,7 +141,7 @@ final class ExamplePlugin: ObservableObject, Plugin {
     }
 
     // Optional hooks (defaults do nothing): activate(), deactivate(), configDidChange(),
-    // menuItems(), setupView(), isReady, setupIssues.
+    // showsInMenu(_:), menuAlerts(), menuItems(), overviewView(), setupView(), isReady, setupIssues.
 
     func settingsView() -> AnyView? { AnyView(ExampleSettingsView(plugin: self, state: state)) }
 }
@@ -133,8 +170,14 @@ private struct ExampleSettingsView: View {
   `LoginEnvironment.shared.environment(for: path)` so `#!/usr/bin/env node` scripts work.
 - **No network dependencies at runtime** for UI: vendor web libraries into `Resources/<id>/vendor/`
   (see `scripts/vendor.sh`) instead of loading from a CDN.
+- **Declare, don't build shared UI:** never add items to the status menu, register hotkeys or write
+  config.json directly — use the hooks above so on/off, conflicts and ordering keep working.
+- **Keep the menu short:** at most two `primaryActions()`; everything else lives in the plugin's
+  submenu. Hide shortcut-only extras and items that only matter in some state with `showsInMenu`.
+  Use `menuAlerts()` only for something the user should act on now.
+- **Plain keys:** an action that is only active temporarily may set `allowsBareKey: true` (with `isAvailable`), so the user can bind e.g. `1` — never for an always-registered action.
 - **Shortcuts:** `defaultShortcut` needs ⌘, ⌥ or ⌃ (function keys excepted) and must not clash with
-  shipped defaults — currently ⌘⇧I, ⌘⇧J, ⌥⇧⌘I, ⌥⇧⌘J (Obsidian Capture), ⌃⌥Space (AI Chat), ⌃⌥, (Open Settings), and Nose Control's (see docs/nose-control.md). Settings → Shortcuts shows them all.
+  shipped defaults — currently ⌘⇧I, ⌘⇧J, ⌥⇧⌘I, ⌥⇧⌘J (Obsidian Capture), ⌃⌥Space (AI Chat), ⌃⌥K (Skill Manager), Video Notes' (⌃⌥R, ⌃⌥⇧R, ⌃⌥P, ⌃⌥S, ⌃⌥X, ⌃⌥V, ⌃⌥F, ⌃⌥A, ⌃⌥⇧A), ⌃⌥, (Open Settings), and Nose Control's (see docs/nose-control.md). Settings → Shortcuts shows them all.
   Prefer `nil` (user assigns one) over grabbing a combination other apps use; Carbon hotkeys
   swallow the key press system-wide.
 - **Main thread:** `perform` runs on the main actor. Do slow work in `Task {}` / `Shell.run` /

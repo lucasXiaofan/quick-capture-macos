@@ -116,7 +116,7 @@ final class AppState: ObservableObject {
             for action in plugin.actions {
                 guard let raw = next.shortcutString(action, of: plugin) else { continue }
                 let label = "\(plugin.name): \(action.title)"
-                guard let s = Shortcut(config: raw) else {
+                guard let s = Shortcut(config: raw, allowBare: action.allowsBareKey) else {
                     throw AppError("“\(raw)” is not a valid shortcut for \(label). "
                                    + "Use e.g. <cmd>+<shift>+i, with at least one of <cmd>, <ctrl>, <alt>.")
                 }

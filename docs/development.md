@@ -35,6 +35,10 @@ node tests/render.test.cjs
 ```
 
 ```bash
+node tests/skills.test.cjs
+```
+
+```bash
 scripts/chat-smoke.sh claude haiku
 ```
 
@@ -48,7 +52,7 @@ To work on the chat page in a browser, serve `Resources/ai_chat` (there's a conf
 
 ```
 Sources/QuickCapture/
-  App/        app delegate + menu, AppState (config, plugin lifecycle, hotkeys, permissions), config types
+  App/        app delegate, StatusMenu (menu bar menu built from the enabled plugins), AppState (config, plugin lifecycle, hotkeys, permissions), config types
   Core/       global hotkeys, process helpers (login-shell PATH discovery), toasts, JSON values
   UI/         Settings (General + one page per plugin), onboarding, shared components
   Plugins/    Plugin protocol, registry, one folder per plugin

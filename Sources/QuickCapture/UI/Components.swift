@@ -51,6 +51,7 @@ struct StepRow<Accessory: View>: View {
 /// Click, then press a key combination. Esc cancels.
 struct ShortcutRecorder: View {
     @ObservedObject var state: AppState
+    var allowBare = false
     let shortcut: Shortcut?
     let onChange: (Shortcut?) -> Void
     @State private var recording = false
@@ -82,7 +83,7 @@ struct ShortcutRecorder: View {
         state.pauseHotkeys(true)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if event.keyCode == 53 { stop(); return nil }  // Esc
-            if let s = Shortcut(event: event) { stop(); onChange(s) } else { NSSound.beep() }
+            if let s = Shortcut(event: event, allowBare: allowBare) { stop(); onChange(s) } else { NSSound.beep() }
             return nil
         }
     }
@@ -108,10 +109,14 @@ struct ShortcutRow: View {
         let duplicates = current.map { state.slots(using: $0, excluding: slot) } ?? []
         LabeledContent {
             VStack(alignment: .trailing, spacing: 3) {
-                ShortcutRecorder(state: state, shortcut: current) { new in record(new) }
+                ShortcutRecorder(state: state, allowBare: slot.action.allowsBareKey, shortcut: current) { new in record(new) }
                 if !duplicates.isEmpty {
                     Label("Also used by \(duplicates.map(\.label).joined(separator: ", "))", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption).foregroundStyle(.orange)
+                } else if let current, !current.hasRequiredModifier {
+                    Label("Plain key: only active while this feature is running, and released while paused so you can type.",
+                          systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
                 } else if current?.overlapsAppCommands == true {
                     Label("Many apps use ⌘ shortcuts like this for their own commands; this one takes priority over them. ⌃⌥ combinations rarely clash.",
                           systemImage: "info.circle")

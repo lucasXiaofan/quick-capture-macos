@@ -65,6 +65,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSCameraUsageDescription</key><string>Nose Control reads the camera on this Mac to follow where your nose points. Video never leaves your Mac.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Video Notes records your voice with videos and meeting recordings. Recordings never leave your Mac.</string>
   <key>NSHumanReadableCopyright</key><string>Shortcut-driven capture and AI chat for macOS.</string>
 </dict>
 </plist>

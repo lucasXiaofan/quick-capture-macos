@@ -3,7 +3,7 @@
 Native macOS menu-bar app (Swift/AppKit + SwiftUI, SwiftPM, macOS 13+). Every feature is a
 **plugin** triggered by global shortcuts; the core owns config, hotkeys, menu and Settings.
 
-- `Sources/QuickCapture/App/` — app delegate + menu (`main.swift`), `AppState` (config load/watch/validate,
+- `Sources/QuickCapture/App/` — app delegate (`main.swift`), menu bar menu built from plugins (`StatusMenu.swift`), `AppState` (config load/watch/validate,
   plugin lifecycle, hotkeys, permissions), `Config.swift` (`AppConfig`, `PluginSettings`, `Paths`).
 - `Sources/QuickCapture/Core/` — hotkeys (Carbon), `Shell`/`StreamingProcess`/`LoginEnvironment`, `Toast`, `JSONValue`.
 - `Sources/QuickCapture/UI/` — Settings (sidebar: General + one page per plugin), onboarding, shared components.
@@ -16,7 +16,7 @@ Build and test:
 
 ```bash
 swift build
-node tests/bridge.test.cjs && node tests/render.test.cjs
+node tests/bridge.test.cjs && node tests/render.test.cjs && node tests/skills.test.cjs
 scripts/chat-smoke.sh claude haiku      # real CLI round trip (uses quota)
 scripts/build.sh --install              # bundle, sign, install to /Applications, relaunch
 ```

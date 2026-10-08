@@ -92,7 +92,7 @@ struct AppConfig: Equatable {
     }
 
     @MainActor func shortcut(_ action: PluginAction, of plugin: Plugin) -> Shortcut? {
-        shortcutString(action, of: plugin).flatMap(Shortcut.init(config:))
+        shortcutString(action, of: plugin).flatMap { Shortcut(config: $0, allowBare: action.allowsBareKey) }
     }
 
     @MainActor mutating func setShortcut(_ shortcut: Shortcut?, for action: PluginAction, of plugin: Plugin) {
