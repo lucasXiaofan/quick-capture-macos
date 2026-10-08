@@ -102,8 +102,8 @@ Recordings from the Mac's microphone are often quiet. **Volume** (Settings → M
 
 Tags are columns, shared by Videos, Selfies and Recordings, and their order is the dashboard's order: rank the important ones first.
 
-- **Tag Order** is a panel at the left of the dashboard (open by default; the **Tag Order** button in the header shows or hides it). It lists every tag with its rank and how many items use it. **↑ / ↓** on a row moves that tag one place, and the columns next to it move right away. To move several at once, select them (⌘- or ⇧-click) and use the buttons below the list: to the top, up, down, to the bottom (also ⌥⌘↑, ⌘↑, ⌘↓, ⌥⌘↓). Right-click a row for **Move to Top / Bottom** and **Delete Tag…**. **Sort by Most Used** puts the busiest tags first; **Untagged as the last column** moves Untagged after your tags (`video_notes.untagged_last`). The panel also adds tags.
-- **⋯ on a column** has **Move to Front**, **Move Left**, **Move Right** and **Move to End** for that one tag.
+- **Tag Order** is a panel at the left of the dashboard, open by default; the **Tag Order** button in the header shows or hides it. Each tag is a row with its rank, how many items use it, and **↑ / ↓**: click one and the columns move right away. Right-click a row for **Move to Top**, **Move to Bottom** and **Delete Tag…**. Below the list: add a tag, **Sort by Most Used** (busiest first), and **Untagged as the last column** (`video_notes.untagged_last`).
+- **On the board**, each tag column shows the same rank number, and **‹ ›** in its header move it left or right. Its **⋯** menu also has **Move to Front** and **Move to End**.
 - **New Tag** (dashboard header) adds one. Deleting always asks first; the items are kept and move to Untagged. There are no built-in tags.
 
 ## Compression

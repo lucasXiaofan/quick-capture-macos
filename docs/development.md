@@ -65,3 +65,17 @@ legacy-python/           the original Python version, kept for reference
 ## Writing a plugin
 
 Every feature is a plugin: a Swift class that declares actions. The core provides its on/off switch, shortcut recorders, menu items, Settings page, and typed options in `config.json`. Follow [`.claude/skills/new-plugin/SKILL.md`](../.claude/skills/new-plugin/SKILL.md); Claude Code loads it as the `new-plugin` skill, and `AGENTS.md` points Codex to it.
+
+## Seeing the UI without Screen Recording
+
+To check a window's layout from a script (or an agent) without granting Screen Recording to the terminal, start the
+app with `QC_SNAPSHOT_DIR` set and post a distributed notification; every open (or minimized) window of the app is
+saved as `<window title>.png` in that folder. It renders the app's own views, so no permission is needed, and it does
+nothing unless the variable is set.
+
+```bash
+osascript -e 'quit app "Quick Capture"'
+open -a "/Applications/Quick Capture.app" --env QC_SNAPSHOT_DIR="$(mktemp -d)"
+echo 'import Foundation
+DistributedNotificationCenter.default().postNotificationName(.init("QuickCaptureSnapshot"), object: nil, userInfo: nil, deliverImmediately: true)' | swift -
+```

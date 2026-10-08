@@ -195,7 +195,7 @@ struct VideoDashboardView: View {
             HStack(spacing: 0) {
                 if plugin.arrangingTags {
                     TagOrderPanel(plugin: plugin, tags: tags, untaggedLast: plugin.settings.untaggedLast)
-                        .frame(width: 250)
+                        .frame(width: 240)
                     Divider()
                 }
                 MediaBoard(plugin: plugin, store: plugin.store(tab.kind), kind: tab.kind, columns: columns, search: search,
@@ -209,7 +209,6 @@ struct VideoDashboardView: View {
 
     private var toolbar: some View {
         HStack(spacing: 12) {
-            Text("Media Capture").font(.title3.weight(.semibold))
             Picker("", selection: $tab.kind) {
                 ForEach(MediaKind.allCases) { kind in
                     Label("\(kind.title) \(plugin.store(kind).videos.count)", systemImage: kind.symbol).tag(kind)
@@ -299,7 +298,10 @@ private struct MediaBoard: View {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 14) {
                         ForEach(columns, id: \.self) { column in
-                            VideoColumn(plugin: plugin, store: store, kind: kind, tag: column, search: search)
+                            let tags = columns.compactMap { $0 }
+                            let rank = column.flatMap { tags.firstIndex(of: $0) }
+                            VideoColumn(plugin: plugin, store: store, kind: kind, tag: column, search: search,
+                                        rank: rank.map { $0 + 1 }, isLast: rank == tags.count - 1)
                         }
                         Button { plugin.promptNewTag() } label: {
                             Label("New Tag", systemImage: "plus")
@@ -398,88 +400,119 @@ private struct QuickSlotTile: View {
     }
 }
 
-/// The Tag Order panel at the left of the dashboard: the tags in column order, ranked. ↑ / ↓ on a row moves that tag;
-/// select several (⌘- or ⇧-click) to move them together with the buttons below (⌘↑ / ⌘↓, ⌥⌘↑ / ⌥⌘↓ for top and
-/// bottom). The board next to it follows immediately. Also adds and deletes tags (deleting asks; items are kept).
+/// The Tag Order panel at the left of the dashboard: the tags in column order, ranked, with ↑ / ↓ on every row.
+/// The board next to it follows immediately. Right-click a row for top / bottom / delete. Shown or hidden only from
+/// the header's Tag Order button, so it can't be closed by accident.
 private struct TagOrderPanel: View {
     let plugin: VideoNotesPlugin
     let tags: [String]
     let untaggedLast: Bool
-    @State private var selection = Set<String>()
     @State private var newTag = ""
 
     var body: some View {
         let counts = plugin.tagCounts
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Tag Order").font(.headline)
-                Spacer()
-                Button { plugin.arrangingTags = false } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.borderless).help("Hide the panel")
+                Text("Columns follow this order. Put the important ones on top.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Columns appear in this order. Important tags first.")
-                .font(.caption).foregroundStyle(.secondary)
-            List(selection: $selection) {
-                ForEach(Array(tags.enumerated()), id: \.element) { index, tag in
-                    HStack(spacing: 6) {
-                        Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 18, alignment: .trailing)
-                        Text(tag).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text("\(counts[tag] ?? 0)").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
-                        Button { plugin.moveTags([tag], .up) } label: { Image(systemName: "chevron.up") }
-                            .buttonStyle(.borderless).disabled(index == 0).help("Move up")
-                        Button { plugin.moveTags([tag], .down) } label: { Image(systemName: "chevron.down") }
-                            .buttonStyle(.borderless).disabled(index == tags.count - 1).help("Move down")
+            .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
+            ScrollView {
+                VStack(spacing: 4) {
+                    ForEach(Array(tags.enumerated()), id: \.element) { index, tag in
+                        TagOrderRow(plugin: plugin, tag: tag, rank: index + 1, count: counts[tag] ?? 0,
+                                    isFirst: index == 0, isLast: index == tags.count - 1)
                     }
-                    .tag(tag)
-                    .contextMenu {
-                        Button("Move to Top") { plugin.moveTags([tag], .top) }
-                        Button("Move to Bottom") { plugin.moveTags([tag], .bottom) }
-                        Divider()
-                        Button("Delete Tag…", role: .destructive) { plugin.deleteTags([tag]) }
+                    if tags.isEmpty {
+                        Text("No tags yet. Add one below.").font(.caption).foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, minHeight: 40)
                     }
                 }
+                .padding(.horizontal, 10)
             }
-            .listStyle(.inset(alternatesRowBackgrounds: false))
-            .frame(maxHeight: .infinity)
-            HStack(spacing: 4) {
-                move("arrow.up.to.line", .top, "Move the selected tags to the top (⌥⌘↑)", .upArrow, [.command, .option])
-                move("arrow.up", .up, "Move the selected tags up (⌘↑)", .upArrow, .command)
-                move("arrow.down", .down, "Move the selected tags down (⌘↓)", .downArrow, .command)
-                move("arrow.down.to.line", .bottom, "Move the selected tags to the bottom (⌥⌘↓)", .downArrow, [.command, .option])
-                Spacer()
-                Button("Delete…", role: .destructive) {
-                    if plugin.deleteTags(tags.filter(selection.contains)) { selection = [] }
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    TextField("New tag", text: $newTag).textFieldStyle(.roundedBorder).onSubmit(add)
+                    Button("Add", action: add).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                .disabled(selection.isEmpty)
+                Button { plugin.sortTagsByUse() } label: {
+                    Label("Sort by Most Used", systemImage: "arrow.up.arrow.down").frame(maxWidth: .infinity)
+                }
+                .help("Busiest tags first")
+                Toggle("Untagged as the last column", isOn: Binding(get: { untaggedLast },
+                                                                    set: { v in try? plugin.update { $0.untaggedLast = v } }))
             }
             .controlSize(.small)
-            Button { plugin.sortTagsByUse() } label: { Label("Sort by Most Used", systemImage: "arrow.up.arrow.down") }
-                .controlSize(.small)
-            Toggle("Untagged as the last column", isOn: Binding(get: { untaggedLast },
-                                                                set: { v in try? plugin.update { $0.untaggedLast = v } }))
-                .font(.caption)
-            HStack(spacing: 6) {
-                TextField("New tag", text: $newTag).textFieldStyle(.roundedBorder).onSubmit(add)
-                Button("Add", action: add).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            .controlSize(.small)
+            .padding(14)
         }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-    }
-
-    private func move(_ symbol: String, _ move: VideoNotesPlugin.TagMove, _ help: String,
-                      _ key: KeyEquivalent, _ modifiers: EventModifiers) -> some View {
-        Button { plugin.moveTags(selection, move) } label: { Image(systemName: symbol) }
-            .keyboardShortcut(key, modifiers: modifiers)
-            .disabled(selection.isEmpty)
-            .help(help)
+        .background(Color(nsColor: .underPageBackgroundColor))
     }
 
     private func add() {
         plugin.addTag(newTag)
         newTag = ""
+    }
+}
+
+private struct TagOrderRow: View {
+    let plugin: VideoNotesPlugin
+    let tag: String
+    let rank: Int
+    let count: Int
+    let isFirst: Bool
+    let isLast: Bool
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            RankBadge(rank: rank)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(tag).font(.callout.weight(.medium)).lineLimit(1)
+                Text("\(count) item\(count == 1 ? "" : "s")").font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            HStack(spacing: 2) {
+                arrow("chevron.up", "Move up", disabled: isFirst) { plugin.moveTags([tag], .up) }
+                arrow("chevron.down", "Move down", disabled: isLast) { plugin.moveTags([tag], .down) }
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor).opacity(hovering ? 1 : 0.7)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(hovering ? 0.35 : 0.15)))
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Move to Top") { plugin.moveTags([tag], .top) }.disabled(isFirst)
+            Button("Move to Bottom") { plugin.moveTags([tag], .bottom) }.disabled(isLast)
+            Divider()
+            Button("Delete Tag…", role: .destructive) { plugin.deleteTags([tag]) }
+        }
+    }
+
+    private func arrow(_ symbol: String, _ help: String, disabled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .bold)).frame(width: 24, height: 22)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(disabled ? 0 : 0.12)))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(disabled ? Color.secondary.opacity(0.3) : Color.primary)
+        .disabled(disabled)
+        .help(help)
+    }
+}
+
+/// The tag's place in the order: shown in the Tag Order panel and on its column, so the two are easy to match.
+struct RankBadge: View {
+    let rank: Int
+
+    var body: some View {
+        Text("\(rank)")
+            .font(.system(size: 11, weight: .bold, design: .rounded)).monospacedDigit()
+            .frame(minWidth: 20, minHeight: 20)
+            .background(Circle().fill(Color.accentColor))
+            .foregroundStyle(.white)
     }
 }
 
@@ -489,6 +522,9 @@ struct VideoColumn: View {
     var kind = MediaKind.video
     let tag: String?
     var search = ""
+    /// Place in the tag order (1 = first); nil for Untagged.
+    var rank: Int?
+    var isLast = false
     @State private var targeted = false
 
     var body: some View {
@@ -500,7 +536,7 @@ struct VideoColumn: View {
         }
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Circle().fill(tag == nil ? Color.secondary : Color.accentColor).frame(width: 8, height: 8)
+                if let rank { RankBadge(rank: rank) } else { Circle().fill(Color.secondary).frame(width: 8, height: 8).padding(.horizontal, 6) }
                 Text(tag ?? "Untagged").font(.subheadline.weight(.semibold)).lineLimit(1)
                 Text("\(all.count)")
                     .font(.caption2.weight(.semibold)).monospacedDigit()
@@ -509,6 +545,15 @@ struct VideoColumn: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(formattedSize(all.reduce(0) { $0 + $1.size })).font(.caption2).foregroundStyle(.tertiary)
+                if let tag, let rank {
+                    HStack(spacing: 0) {
+                        Button { plugin.moveTags([tag], .up) } label: { Image(systemName: "chevron.left").frame(width: 18, height: 18) }
+                            .disabled(rank == 1).help("Move this column left")
+                        Button { plugin.moveTags([tag], .down) } label: { Image(systemName: "chevron.right").frame(width: 18, height: 18) }
+                            .disabled(isLast).help("Move this column right")
+                    }
+                    .buttonStyle(.borderless).font(.system(size: 10, weight: .bold))
+                }
                 if let tag {
                     Menu {
                         Button("Move to Front") { plugin.moveTags([tag], .top) }
@@ -516,7 +561,7 @@ struct VideoColumn: View {
                         Button("Move Right") { plugin.moveTags([tag], .down) }
                         Button("Move to End") { plugin.moveTags([tag], .bottom) }
                         Divider()
-                        Button("Show Tag Order") { plugin.arrangingTags = true }
+                        Button("Show Tag Order Panel") { plugin.arrangingTags = true }
                         Divider()
                         Button("Delete Tag…", role: .destructive) { plugin.deleteTags([tag]) }
                     } label: { Image(systemName: "ellipsis") }
@@ -542,7 +587,7 @@ struct VideoColumn: View {
             }
         }
         .padding(10)
-        .frame(width: 260)
+        .frame(width: all.isEmpty ? 190 : 260)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.secondary.opacity(targeted ? 0.2 : 0.07)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(targeted ? Color.accentColor : .clear, lineWidth: 2))

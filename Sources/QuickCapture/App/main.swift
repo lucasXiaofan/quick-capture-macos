@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         removeLegacyLaunchAgent()
+        DebugSnapshot.installIfRequested()
         NSApp.mainMenu = Self.makeMainMenu()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)

@@ -1079,7 +1079,7 @@ struct VolumeSlider: View {
                 try? plugin.update { $0.volume = Int(v) }
                 value = nil
             }
-            .frame(minWidth: compact ? 110 : 160)
+            .frame(minWidth: compact ? 90 : 160, maxWidth: compact ? 120 : .infinity)
             Image(systemName: "speaker.wave.3").foregroundStyle(.secondary)
             Text("\(Int(current))%").monospacedDigit().frame(width: 44, alignment: .trailing)
                 .foregroundStyle(current > 100 ? Color.accentColor : .secondary)
