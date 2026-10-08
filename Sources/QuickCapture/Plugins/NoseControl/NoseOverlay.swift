@@ -52,6 +52,10 @@ final class NoseOverlayView: NSView {
     var message = ""
     var edge: Int?               // calibration hint: 0 left, 1 right, 2 top, 3 bottom
     var crosshair = false
+    var panelRect: CGRect?       // the panel the pointer is confined to
+    var panelFlash = Date.distantPast
+    var guide: [CGRect] = []     // the three panels: dividers and numbers at the jump points
+    var legend: [String] = []    // shortcut cheat sheet, bottom-left
     var clickAt: CGPoint?
     var clickTime = Date.distantPast
 
@@ -74,6 +78,34 @@ final class NoseOverlayView: NSView {
             path.move(to: NSPoint(x: c.x, y: c.y - 30)); path.line(to: NSPoint(x: c.x, y: c.y + 30))
             path.stroke()
         }
+        if !guide.isEmpty {
+            NSColor.white.withAlphaComponent(0.22).setStroke()
+            let dividers = NSBezierPath()
+            dividers.lineWidth = 2
+            dividers.setLineDash([8, 8], count: 2, phase: 0)
+            for r in guide.dropFirst() {
+                if guide[0].width < bounds.width * 0.9 {   // columns: vertical dividers
+                    dividers.move(to: NSPoint(x: r.minX, y: r.minY)); dividers.line(to: NSPoint(x: r.minX, y: r.maxY))
+                } else {                                    // rows: horizontal dividers
+                    dividers.move(to: NSPoint(x: r.minX, y: r.minY)); dividers.line(to: NSPoint(x: r.maxX, y: r.minY))
+                }
+            }
+            dividers.stroke()
+            for (i, r) in guide.enumerated() {
+                let label = NSAttributedString(string: "\(i + 1)", attributes: [
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.3), .font: NSFont.systemFont(ofSize: 72, weight: .bold)])
+                let size = label.size()
+                label.draw(at: NSPoint(x: r.midX - size.width / 2, y: r.midY - size.height / 2))
+            }
+        }
+        if let r = panelRect {
+            let t = Date().timeIntervalSince(panelFlash)
+            if t < 0.4 { NSColor.systemGreen.withAlphaComponent(0.18 * (1 - t / 0.4)).setFill(); r.fill() }
+            NSColor.systemGreen.withAlphaComponent(0.6).setStroke()
+            let outline = NSBezierPath(rect: r.insetBy(dx: 2, dy: 2))
+            outline.lineWidth = 4
+            outline.stroke()
+        }
         if let p = pointer {
             NSColor.systemGreen.withAlphaComponent(0.55).setFill()
             NSBezierPath(ovalIn: NSRect(x: p.x - 18, y: p.y - 18, width: 36, height: 36)).fill()
@@ -87,6 +119,17 @@ final class NoseOverlayView: NSView {
                 ring.lineWidth = 4
                 ring.stroke()
             }
+        }
+        if !legend.isEmpty {
+            let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .medium)
+            let text = NSAttributedString(string: legend.joined(separator: "\n"), attributes: [
+                .foregroundColor: NSColor.white, .font: font,
+                .paragraphStyle: { let p = NSMutableParagraphStyle(); p.lineSpacing = 4; return p }()])
+            let size = text.size()
+            let box = NSRect(x: 20, y: bounds.height - size.height - 34, width: size.width + 28, height: size.height + 20)
+            NSColor.black.withAlphaComponent(0.72).setFill()
+            NSBezierPath(roundedRect: box, xRadius: 10, yRadius: 10).fill()
+            text.draw(at: NSPoint(x: box.minX + 14, y: box.minY + 10))
         }
         guard !message.isEmpty else { return }
         let text = NSAttributedString(string: message, attributes: [

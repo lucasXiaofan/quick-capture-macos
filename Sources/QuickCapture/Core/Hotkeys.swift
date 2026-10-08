@@ -36,7 +36,7 @@ struct Shortcut: Hashable {
     var isFunctionKey: Bool { Shortcut.keys.first { $0.code == keyCode }?.name.hasPrefix("<f") ?? false }
     var hasRequiredModifier: Bool { command || option || control || isFunctionKey }
 
-    init?(config: String) {
+    init?(config: String, allowBare: Bool = false) {
         var key: UInt32?
         for raw in config.lowercased().split(separator: "+", omittingEmptySubsequences: false) {
             let token = raw.trimmingCharacters(in: .whitespaces)
@@ -52,16 +52,16 @@ struct Shortcut: Hashable {
         }
         guard let key else { return nil }
         keyCode = key
-        guard hasRequiredModifier else { return nil }
+        guard allowBare || hasRequiredModifier else { return nil }
     }
 
-    init?(event: NSEvent) {
+    init?(event: NSEvent, allowBare: Bool = false) {
         guard Shortcut.keys.contains(where: { $0.code == Int(event.keyCode) }) else { return nil }
         let f = event.modifierFlags
         keyCode = UInt32(event.keyCode)
         command = f.contains(.command); shift = f.contains(.shift)
         option = f.contains(.option); control = f.contains(.control)
-        guard hasRequiredModifier else { return nil }
+        guard allowBare || hasRequiredModifier else { return nil }
     }
 
     var configString: String {

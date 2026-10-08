@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: data: https:;">
+  <title>Skills</title>
+  <!-- Markdown, math and code highlighting are shared with AI Chat. -->
+  <link rel="stylesheet" href="../ai_chat/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../ai_chat/vendor/hljs-light.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="../ai_chat/vendor/hljs-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="side-head">
+      <button id="home-btn" class="title" title="All skills">Skills</button>
+      <button id="new-btn" class="icon-btn" title="New skill (⌘N)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
+      </button>
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+      <input id="search" type="search" placeholder="Search skills and files" autocomplete="off" spellcheck="false">
+      <kbd>⌘F</kbd>
+    </div>
+    <nav id="list" aria-label="Skills"></nav>
+    <div class="side-foot">
+      <label class="switch"><input type="checkbox" id="builtin"><span></span>Built-in skills</label>
+      <span class="spacer"></span>
+      <button id="add-folder" class="ghost" title="Add a folder that contains skills">Add folder</button>
+      <button id="refresh" class="icon-btn" title="Rescan folders">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <section id="home" class="view">
+      <header class="home-head">
+        <div>
+          <h1>Your skills</h1>
+          <p id="home-sub" class="muted"></p>
+        </div>
+        <button id="new-btn-2" class="primary">New skill</button>
+      </header>
+      <div id="cards" class="cards"></div>
+      <p id="empty" class="empty" hidden></p>
+    </section>
+
+    <section id="skill" class="view" hidden>
+      <header class="skill-head">
+        <div class="skill-title">
+          <h1 id="skill-name"></h1>
+          <p id="skill-desc"></p>
+          <div id="skill-meta" class="chips"></div>
+        </div>
+        <div class="actions" id="read-actions">
+          <button id="edit-btn" class="primary" title="Edit this file (⌘E)">Edit</button>
+          <button id="open-btn" class="ghost" title="Open in your default editor">Open in editor</button>
+          <button id="reveal-btn" class="ghost" title="Show in Finder">Finder</button>
+        </div>
+        <div class="actions" id="edit-actions" hidden>
+          <span id="dirty" class="dirty" hidden>Unsaved</span>
+          <button id="cancel-btn" class="ghost" title="Discard changes (Esc)">Cancel</button>
+          <button id="save-btn" class="primary" title="Save (⌘S)">Save</button>
+        </div>
+      </header>
+      <div class="skill-body">
+        <nav id="files" aria-label="Files"></nav>
+        <div id="doc-scroll">
+          <div class="crumb" id="crumb"></div>
+          <article id="rendered" class="md"></article>
+          <textarea id="editor" spellcheck="false" hidden></textarea>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="new-dialog">
+    <form method="dialog" id="new-form">
+      <h2>New skill</h2>
+      <label>Name
+        <input id="new-name" placeholder="e.g. paper-table-check" autocomplete="off" spellcheck="false" required>
+        <small id="new-name-hint">lowercase-kebab; becomes the folder name and the /command</small>
+      </label>
+      <label>When should the agent use it?
+        <textarea id="new-desc" rows="3" placeholder="One or two sentences: what it does and the requests that should trigger it."></textarea>
+      </label>
+      <label>Location
+        <select id="new-root"></select>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="new-cancel" class="ghost">Cancel</button>
+        <button type="submit" id="new-create" class="primary">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+
+  <script src="../ai_chat/vendor/marked.umd.js"></script>
+  <script src="../ai_chat/vendor/katex/katex.min.js"></script>
+  <script src="../ai_chat/vendor/purify.min.js"></script>
+  <script src="../ai_chat/vendor/highlight.min.js"></script>
+  <script src="../ai_chat/render.js"></script>
+  <script src="skills.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

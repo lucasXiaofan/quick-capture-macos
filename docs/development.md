@@ -35,6 +35,10 @@ node tests/render.test.cjs
 ```
 
 ```bash
+node tests/skills.test.cjs
+```
+
+```bash
 scripts/chat-smoke.sh claude haiku
 ```
 
@@ -48,7 +52,7 @@ To work on the chat page in a browser, serve `Resources/ai_chat` (there's a conf
 
 ```
 Sources/QuickCapture/
-  App/        app delegate + menu, AppState (config, plugin lifecycle, hotkeys, permissions), config types
+  App/        app delegate, StatusMenu (menu bar menu built from the enabled plugins), AppState (config, plugin lifecycle, hotkeys, permissions), config types
   Core/       global hotkeys, process helpers (login-shell PATH discovery), toasts, JSON values
   UI/         Settings (General + one page per plugin), onboarding, shared components
   Plugins/    Plugin protocol, registry, one folder per plugin
@@ -61,3 +65,17 @@ legacy-python/           the original Python version, kept for reference
 ## Writing a plugin
 
 Every feature is a plugin: a Swift class that declares actions. The core provides its on/off switch, shortcut recorders, menu items, Settings page, and typed options in `config.json`. Follow [`.claude/skills/new-plugin/SKILL.md`](../.claude/skills/new-plugin/SKILL.md); Claude Code loads it as the `new-plugin` skill, and `AGENTS.md` points Codex to it.
+
+## Seeing the UI without Screen Recording
+
+To check a window's layout from a script (or an agent) without granting Screen Recording to the terminal, start the
+app with `QC_SNAPSHOT_DIR` set and post a distributed notification; every open (or minimized) window of the app is
+saved as `<window title>.png` in that folder. It renders the app's own views, so no permission is needed, and it does
+nothing unless the variable is set.
+
+```bash
+osascript -e 'quit app "Quick Capture"'
+open -a "/Applications/Quick Capture.app" --env QC_SNAPSHOT_DIR="$(mktemp -d)"
+echo 'import Foundation
+DistributedNotificationCenter.default().postNotificationName(.init("QuickCaptureSnapshot"), object: nil, userInfo: nil, deliverImmediately: true)' | swift -
+```

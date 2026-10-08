@@ -13,10 +13,15 @@ struct NoseSettings: PluginSettings {
     var showPreview = true
     /// Skip calibration on start when a saved one exists.
     var reuseCalibration = true
+    /// "columns" (left | middle | right) or "rows" (top / middle / bottom).
+    var panelLayout = "columns"
+    /// Shortcut cheat sheet on screen while tracking.
+    var showLegend = true
 
     enum CodingKeys: String, CodingKey {
         case sensitivityX = "sensitivity_x", sensitivityY = "sensitivity_y", steadiness
         case showPreview = "show_preview", reuseCalibration = "reuse_calibration"
+        case panelLayout = "panel_layout", showLegend = "show_legend"
     }
 }
 
@@ -32,13 +37,20 @@ final class NoseControlPlugin: ObservableObject, Plugin {
     var enabledByDefault: Bool { false }
     let actions = [
         PluginAction(id: "toggle", title: "Start / Stop Nose Control", symbol: "power", defaultShortcut: "<ctrl>+<alt>+n"),
-        PluginAction(id: "left_click", title: "Left Click", symbol: "cursorarrow.click", defaultShortcut: "<alt>+<enter>"),
-        PluginAction(id: "right_click", title: "Right Click", symbol: "cursorarrow.click.2", defaultShortcut: "<alt>+<shift>+<enter>"),
-        PluginAction(id: "double_click", title: "Double Click", symbol: "cursorarrow.rays", defaultShortcut: "<ctrl>+<alt>+<enter>"),
-        PluginAction(id: "pause", title: "Pause / Resume Pointer", symbol: "pause.circle", defaultShortcut: "<alt>+<space>"),
-        PluginAction(id: "sens_up", title: "Sensitivity Up", symbol: "plus.circle", defaultShortcut: "<alt>+]"),
-        PluginAction(id: "sens_down", title: "Sensitivity Down", symbol: "minus.circle", defaultShortcut: "<alt>+["),
-        PluginAction(id: "recalibrate", title: "Recalibrate", symbol: "scope", defaultShortcut: "<ctrl>+<alt>+c"),
+        PluginAction(id: "left_click", title: "Left Click (select, press)", symbol: "cursorarrow.click",
+                     defaultShortcut: "<alt>+<enter>", allowsBareKey: true),
+        PluginAction(id: "right_click", title: "Right Click (context menu)", symbol: "cursorarrow.click.2",
+                     defaultShortcut: "<alt>+<shift>+<enter>", allowsBareKey: true),
+        PluginAction(id: "double_click", title: "Double Click (open)", symbol: "cursorarrow.rays",
+                     defaultShortcut: "<ctrl>+<alt>+<enter>", allowsBareKey: true),
+        PluginAction(id: "panel_1", title: "Jump to Panel 1", symbol: "1.square", defaultShortcut: "1", allowsBareKey: true),
+        PluginAction(id: "panel_2", title: "Jump to Panel 2", symbol: "2.square", defaultShortcut: "2", allowsBareKey: true),
+        PluginAction(id: "panel_3", title: "Jump to Panel 3", symbol: "3.square", defaultShortcut: "3", allowsBareKey: true),
+        PluginAction(id: "whole_screen", title: "Whole Screen (leave panel)", symbol: "rectangle", defaultShortcut: nil, allowsBareKey: true),
+        PluginAction(id: "pause", title: "Pause / Resume Pointer", symbol: "pause.circle", defaultShortcut: "<alt>+<space>", allowsBareKey: true),
+        PluginAction(id: "sens_up", title: "Sensitivity Up", symbol: "plus.circle", defaultShortcut: "<alt>+]", allowsBareKey: true),
+        PluginAction(id: "sens_down", title: "Sensitivity Down", symbol: "minus.circle", defaultShortcut: "<alt>+[", allowsBareKey: true),
+        PluginAction(id: "recalibrate", title: "Recalibrate", symbol: "scope", defaultShortcut: "<ctrl>+<alt>+c", allowsBareKey: true),
     ]
 
     @Published private(set) var running = false
@@ -58,13 +70,21 @@ final class NoseControlPlugin: ObservableObject, Plugin {
         guard (0.3...6).contains(s.sensitivityX), (0.3...6).contains(s.sensitivityY) else {
             throw AppError("nose_control sensitivity_x / sensitivity_y must be between 0.3 and 6.")
         }
+        guard ["columns", "rows"].contains(s.panelLayout) else { throw AppError("nose_control panel_layout must be \"columns\" or \"rows\".") }
         guard (0...1).contains(s.steadiness) else { throw AppError("nose_control steadiness must be between 0 and 1.") }
     }
 
     // MARK: Actions
 
     /// Everything except the on/off shortcut is only grabbed while the mode runs, so ⌥↩ keeps working in other apps otherwise.
-    func isAvailable(_ action: PluginAction) -> Bool { action.id == "toggle" || running }
+    /// While paused, plain-key shortcuts are released (so you can type 1, 2, 3…) except the pause key itself.
+    func isAvailable(_ action: PluginAction) -> Bool {
+        if action.id == "toggle" { return true }
+        guard running else { return false }
+        if session?.paused == true, action.id != "pause",
+           let shortcut = state.config.shortcut(action, of: self), !shortcut.hasRequiredModifier { return false }
+        return true
+    }
 
     func perform(_ action: PluginAction) {
         switch action.id {
@@ -72,7 +92,11 @@ final class NoseControlPlugin: ObservableObject, Plugin {
         case "left_click": session?.click(.left)
         case "right_click": session?.click(.right)
         case "double_click": session?.click(.left, count: 2)
-        case "pause": session?.togglePause()
+        case "pause": session?.togglePause(); state.applyHotkeys()
+        case "panel_1": session?.focusPanel(0)
+        case "panel_2": session?.focusPanel(1)
+        case "panel_3": session?.focusPanel(2)
+        case "whole_screen": session?.focusPanel(nil)
         case "recalibrate": session?.recalibrate()
         case "sens_up": nudgeSensitivity(by: 1.15)
         case "sens_down": nudgeSensitivity(by: 1 / 1.15)
@@ -82,6 +106,19 @@ final class NoseControlPlugin: ObservableObject, Plugin {
 
     func shortcutText(_ actionID: String) -> String {
         action(actionID).flatMap { state.config.shortcut($0, of: self)?.display } ?? "(set a shortcut)"
+    }
+
+    /// The on-screen cheat sheet: which key does what.
+    func legendLines() -> [String] {
+        func key(_ id: String) -> String { shortcutText(id) }
+        return [
+            "\(key("left_click"))   left click",
+            "\(key("right_click"))   right click",
+            "\(key("double_click"))   double click",
+            "\(key("panel_1")) \(key("panel_2")) \(key("panel_3"))   jump to panel",
+            "\(key("pause"))   pause (frees plain keys)",
+            "\(key("toggle"))   stop",
+        ]
     }
 
     func start() {
@@ -143,12 +180,8 @@ final class NoseControlPlugin: ObservableObject, Plugin {
 
     // MARK: Menu & views
 
-    func menuItems() -> [NSMenuItem] {
-        [ClosureMenuItem(running ? "Stop Nose Control" : "Start Nose Control", symbol: running ? "stop.circle" : "play.circle") { [weak self] in
-            guard let self else { return }
-            running ? stop() : start()
-        }]
-    }
+    /// Start/Stop; the click and panel actions are only for while it runs, and live in the submenu.
+    func primaryActions() -> [PluginAction] { action("toggle").map { [$0] } ?? [] }
 
     var setupIssues: [String] {
         var issues: [String] = []
@@ -235,7 +268,7 @@ private struct NoseSettingsSections: View {
                 Button(plugin.running ? "Stop" : "Start") { plugin.running ? plugin.stop() : plugin.start() }
             }
         } footer: {
-            Text("Start with \(plugin.shortcutText("toggle")). Calibrate once: set the neutral pose, then your comfortable left, right, up and down limits — press the Left Click shortcut after each.")
+            Text("Start with \(plugin.shortcutText("toggle")). Calibrate once: set the neutral pose, then your comfortable left, right, up and down limits — press the Left Click shortcut after each. Then press \(plugin.shortcutText("panel_1")), \(plugin.shortcutText("panel_2")) or \(plugin.shortcutText("panel_3")) to jump to a panel; your nose then moves the pointer inside it.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section {
@@ -258,6 +291,13 @@ private struct NoseSettingsSections: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section("Options") {
+            Picker("Three panels are", selection: Binding(get: { s.panelLayout },
+                set: { v in try? plugin.update { $0.panelLayout = v } })) {
+                Text("Columns (left | middle | right)").tag("columns")
+                Text("Rows (top / middle / bottom)").tag("rows")
+            }
+            Toggle("Show shortcut cheat sheet while tracking", isOn: Binding(get: { s.showLegend },
+                set: { v in try? plugin.update { $0.showLegend = v } }))
             Toggle("Show camera preview while tracking", isOn: Binding(get: { s.showPreview },
                 set: { v in try? plugin.update { $0.showPreview = v } }))
             Toggle("Reuse the saved calibration on start", isOn: Binding(get: { s.reuseCalibration },

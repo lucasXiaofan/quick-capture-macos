@@ -107,6 +107,7 @@ struct PluginPage: View {
                 if let error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
             }
             if enabled {
+                if let overview = plugin.overviewView() { overview }
                 if let setup = plugin.setupView() {
                     Section("Setup") { setup.environment(\.inForm, true) }
                 }

@@ -119,14 +119,19 @@ final class ObsidianCapturePlugin: ObservableObject, Plugin {
         today.isEnabled = isSetUp
         items.append(today)
 
+        return items
+    }
+
+    /// The main screenshot and note shortcuts (they follow "Main Shortcuts Save To").
+    func primaryActions() -> [PluginAction] { [CaptureAction.image, .text].compactMap { action($0.rawValue) } }
+
+    func menuAlerts() -> [NSMenuItem] {
         let recoveryCount = (try? FileManager.default.contentsOfDirectory(atPath: Self.recovery.path))?
             .filter { $0.hasSuffix(".md") }.count ?? 0
-        if recoveryCount > 0 {
-            items.append(ClosureMenuItem("Unsaved Captures (\(recoveryCount))…", symbol: "exclamationmark.triangle") {
-                NSWorkspace.shared.open(Self.recovery)
-            })
-        }
-        return items
+        guard recoveryCount > 0 else { return [] }
+        return [ClosureMenuItem("Unsaved Captures (\(recoveryCount))…", symbol: "exclamationmark.triangle") {
+            NSWorkspace.shared.open(Self.recovery)
+        }]
     }
 
     private func openDiary() {

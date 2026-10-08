@@ -32,6 +32,21 @@ final class NoseControlSession {
     private var filterX = OneEuro(minCutoff: 0.4, beta: 0.004)
     private var filterY = OneEuro(minCutoff: 0.4, beta: 0.004)
     private var anchor: CGPoint?
+    /// The panel (0…2) the pointer is confined to, and the nose pose that counts as its centre.
+    private var activePanel: Int?
+    private var reference: [Double]?
+    private var legendTick = 0
+    // TEMP diagnostics for the panel-jump bug: what the mapping produced on the latest tick.
+    private var lastRaw: CGPoint?
+    private var lastD: [Double]?
+    private static let debugLog = Paths.data(for: NoseControlPlugin.pluginID).appendingPathComponent("debug.log")
+
+    private func debug(_ line: String) {
+        let text = "\(Date().formatted(.iso8601)) \(line)\n"
+        try? FileManager.default.createDirectory(at: Self.debugLog.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let h = try? FileHandle(forWritingTo: Self.debugLog) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
+        else { try? Data(text.utf8).write(to: Self.debugLog) }
+    }
     private var trusted = AXIsProcessTrusted()
     private var trustCheckedAt = Date()
 
@@ -42,8 +57,19 @@ final class NoseControlSession {
         self.settings = settings
     }
 
-    /// The primary display: its frame matches the global coordinates used to move the pointer.
-    private var screen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
+    /// The display the pointer is on when nose control starts; panels and the overlay belong to it.
+    private lazy var screen: NSScreen =
+        NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.screens[0]
+
+    /// That display in the coordinates used to move the pointer (origin top-left of the primary display).
+    private var displayFrame: CGRect {
+        let f = screen.frame
+        return CGRect(x: f.minX, y: NSScreen.screens[0].frame.height - f.maxY, width: f.width, height: f.height)
+    }
+
+    /// Pointer coordinates → coordinates inside the overlay view.
+    private func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - displayFrame.minX, y: p.y - displayFrame.minY) }
+    private func local(_ r: CGRect) -> CGRect { r.offsetBy(dx: -displayFrame.minX, dy: -displayFrame.minY) }
 
     // MARK: Lifecycle
 
@@ -92,6 +118,7 @@ final class NoseControlSession {
     func recalibrate() {
         calibration = nil; captured = []; recent = []; seenSince = nil
         anchor = nil; filterX.reset(); filterY.reset()
+        activePanel = nil; reference = nil; view?.panelRect = nil
         phase = .finding
         view?.dim = true; view?.pointer = nil
         view?.edge = nil; view?.crosshair = false
@@ -119,6 +146,7 @@ final class NoseControlSession {
         phase = .tracking
         view?.dim = false; view?.edge = nil; view?.crosshair = false; view?.pointer = nil
         anchor = nil; filterX.reset(); filterY.reset()
+        activePanel = nil; reference = nil; view?.panelRect = nil
     }
 
     /// The left-click shortcut doubles as "next" during calibration.
@@ -149,6 +177,47 @@ final class NoseControlSession {
 
     static func forgetCalibration() { try? FileManager.default.removeItem(at: calibrationFile) }
 
+    // MARK: Panels
+
+    /// Three equal panels, side by side or stacked.
+    private func panelRect(_ i: Int) -> CGRect {
+        let f = displayFrame
+        if settings.panelLayout == "rows" {
+            let h = f.height / 3
+            return CGRect(x: f.minX, y: f.minY + h * CGFloat(i), width: f.width, height: h)
+        }
+        let w = f.width / 3
+        return CGRect(x: f.minX + w * CGFloat(i), y: f.minY, width: w, height: f.height)
+    }
+
+    /// Jumps the pointer to the middle of panel `i` (0…2) and confines the nose to it, using the current head
+    /// pose as that panel's centre. nil goes back to the whole screen.
+    func focusPanel(_ i: Int?) {
+        guard phase == .tracking else { return }
+        filterX.reset(); filterY.reset()
+        guard let i else {
+            activePanel = nil; reference = nil; anchor = nil
+            view?.panelRect = nil
+            return
+        }
+        guard let nose = recent.last else { return }   // no nose in view: nothing to centre on
+        let rect = panelRect(i)
+        let centre = CGPoint(x: rect.midX, y: rect.midY)
+        activePanel = i; reference = nose; anchor = centre
+        view?.panelRect = local(rect)
+        view?.panelFlash = Date()
+        movePointer(to: centre)
+        debug("panel \(i + 1): layout=\(settings.panelLayout) display=\(displayFrame) rect=\(rect) centre=\(centre) "
+              + "sens=\(settings.sensitivityX),\(settings.sensitivityY) cal=\(String(describing: calibration)) ref=\(nose)")
+        for delay in [0.05, 0.3, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                self.debug("  +\(delay)s pointer=\(CGEvent(source: nil)?.location ?? .zero) anchor=\(String(describing: self.anchor)) "
+                           + "raw=\(String(describing: self.lastRaw)) d=\(String(describing: self.lastD)) panel=\(String(describing: self.activePanel)) paused=\(self.paused)")
+            }
+        }
+    }
+
     // MARK: Actions
 
     func togglePause() {
@@ -176,7 +245,7 @@ final class NoseControlSession {
                     event?.post(tap: .cghidEventTap)
                 }
             }
-            view?.clickAt = location
+            view?.clickAt = local(location)
             view?.clickTime = Date()
         }
     }
@@ -191,10 +260,12 @@ final class NoseControlSession {
     /// Nose position → screen point. Before calibration: a default gain around the neutral pose, so the
     /// pointer already moves while you calibrate. After: your measured limits map to the screen edges.
     private func target(_ f: [Double]) -> CGPoint {
-        let w = Double(screen.frame.width), h = Double(screen.frame.height)
-        let center = calibration?.center ?? f
-        let d = [f[0] - center[0], f[1] - center[1]]
-        let k = (w / 2) / (0.12 * 1280)                                  // default: 12% of the frame = half the screen
+        let rect = activePanel.map(panelRect) ?? displayFrame
+        let w = Double(rect.width), h = Double(rect.height)
+        let calCenter = calibration?.center ?? f
+        let ref = reference ?? calCenter
+        let d = [f[0] - ref[0], f[1] - ref[1]]
+        let k = (w / 2) / (0.12 * 1280)                                  // default: 12% of the frame = half the panel
         let provisional = [-d[0] * 1280 * k, -d[1] * 720 * k]            // mirrored: turn left → pointer left
         var s = provisional
         if let cal = calibration, cal.extremes.count == 4 {
@@ -202,12 +273,12 @@ final class NoseControlSession {
                 if d * plus >= 0 { return abs(plus) > 0.004 ? d / plus * half : fallback }
                 return abs(minus) > 0.004 ? -(d / minus) * half : fallback
             }
-            let e = cal.extremes
-            s[0] = map(d[0], e[0][0] - center[0], e[1][0] - center[0], w / 2 * 0.98, provisional[0])
-            s[1] = map(d[1], e[2][1] - center[1], e[3][1] - center[1], h / 2 * 0.98, provisional[1])
+            let e = cal.extremes   // limits are measured from the calibration centre, even when re-centred on a panel
+            s[0] = map(d[0], e[0][0] - calCenter[0], e[1][0] - calCenter[0], w / 2 * 0.98, provisional[0])
+            s[1] = map(d[1], e[2][1] - calCenter[1], e[3][1] - calCenter[1], h / 2 * 0.98, provisional[1])
         }
-        return CGPoint(x: min(max(w / 2 + s[0] * settings.sensitivityX, 0), w - 1),
-                       y: min(max(h / 2 + s[1] * settings.sensitivityY, 0), h - 1))
+        return CGPoint(x: min(max(Double(rect.midX) + s[0] * settings.sensitivityX, Double(rect.minX)), Double(rect.maxX) - 1),
+                       y: min(max(Double(rect.midY) + s[1] * settings.sensitivityY, Double(rect.minY)), Double(rect.maxY) - 1))
     }
 
     // MARK: Loop
@@ -239,6 +310,8 @@ final class NoseControlSession {
             let s = min(max(settings.steadiness, 0), 1)
             filterX.minCutoff = 1.5 * pow(0.1, s); filterY.minCutoff = filterX.minCutoff
             let raw = target(nose)
+            lastRaw = raw
+            lastD = reference.map { [nose[0] - $0[0], nose[1] - $0[1]] }
             let q = CGPoint(x: filterX.filter(Double(raw.x), dt: 1.0 / 60), y: filterY.filter(Double(raw.y), dt: 1.0 / 60))
             let leash = CGFloat((4 + 36 * s) * max(1, (settings.sensitivityX + settings.sensitivityY) / 2).squareRoot())
             if let a = anchor {
@@ -250,13 +323,18 @@ final class NoseControlSession {
         }
 
         if phase == .tracking {
+            if legendTick % 30 == 0 {
+                view.legend = settings.showLegend ? plugin.legendLines() : []
+                view.guide = settings.showLegend ? (0..<3).map { local(panelRect($0)) } : []
+            }
+            legendTick += 1
             view.pointer = nil
             let toggle = plugin.shortcutText("toggle")
             view.message = paused ? "Nose control paused — \(plugin.shortcutText("pause")) to resume"
                                   : "Nose control on — \(toggle) to stop"
             if !paused, let p = anchor { movePointer(to: p) }
         } else {
-            view.pointer = anchor        // calibration: show where the nose currently points
+            view.pointer = anchor.map(local)        // calibration: show where the nose currently points
         }
         view.needsDisplay = true
     }

@@ -21,6 +21,17 @@ protocol Plugin: AnyObject {
     /// False hides an action's global shortcut (it isn't registered, so the key reaches other apps).
     /// Call `state.applyHotkeys()` after the answer changes.
     func isAvailable(_ action: PluginAction) -> Bool
+    // MARK: Menu bar menu — a short launcher, rebuilt every time it opens (so it follows state).
+    //   top level:  each enabled plugin's `primaryActions()` (7 rows at most in total), plus `menuAlerts()`
+    //   Plugins ▸ <name> ▸  every other action where `showsInMenu`, then `menuItems()`, then "<name> Settings…"
+
+    /// The one or two things people open the menu for, most important first. Default: the first available action.
+    func primaryActions() -> [PluginAction]
+    /// False keeps an action out of the plugin's submenu too (its shortcut still works) — e.g. per-slot
+    /// variants, or "Stop" while nothing is recording.
+    func showsInMenu(_ action: PluginAction) -> Bool
+    /// Top-level rows that need attention now (e.g. "Unsaved Captures (3)…"). Usually empty.
+    func menuAlerts() -> [NSMenuItem]
 
     /// Called when a hotkey or menu item fires. Only called while the plugin is enabled.
     func perform(_ action: PluginAction)
@@ -37,10 +48,13 @@ protocol Plugin: AnyObject {
     /// config.json changed while enabled.
     func configDidChange()
 
-    /// Extra menu bar menu items shown under the plugin's actions.
+    /// Extra items in the plugin's submenu, under its actions (toggles, "Open …" links).
     func menuItems() -> [NSMenuItem]
-    /// Plugin-specific settings: `Section`s placed in the plugin's page in Settings.
+    /// Plugin-specific settings: `Section`s placed in the plugin's page in Settings, below Shortcuts.
     func settingsView() -> AnyView?
+    /// `Section`s placed at the top of the plugin's Settings page, above Setup and Shortcuts —
+    /// for the thing users come to the page for (e.g. "Open Dashboard").
+    func overviewView() -> AnyView?
     /// Setup steps (permissions, external apps) shown in onboarding and Settings.
     func setupView() -> AnyView?
     /// False while something required is missing. Blocks "Get Started" in onboarding.
@@ -52,6 +66,9 @@ protocol Plugin: AnyObject {
 extension Plugin {
     var enabledByDefault: Bool { true }
     func isAvailable(_ action: PluginAction) -> Bool { true }
+    func primaryActions() -> [PluginAction] { actions.first(where: isAvailable).map { [$0] } ?? [] }
+    func showsInMenu(_ action: PluginAction) -> Bool { true }
+    func menuAlerts() -> [NSMenuItem] { [] }
     func defaultSettings() -> [String: JSONValue] { [:] }
     func validate(_ config: AppConfig) throws {}
     func activate() {}
@@ -59,6 +76,7 @@ extension Plugin {
     func configDidChange() {}
     func menuItems() -> [NSMenuItem] { [] }
     func settingsView() -> AnyView? { nil }
+    func overviewView() -> AnyView? { nil }
     func setupView() -> AnyView? { nil }
     var isReady: Bool { true }
     var setupIssues: [String] { [] }
@@ -80,6 +98,9 @@ struct PluginAction: Identifiable, Hashable {
     let symbol: String
     /// pynput-style, e.g. "<cmd>+<shift>+i". nil means no shortcut until the user sets one.
     var defaultShortcut: String?
+    /// Lets the user bind a plain key (no ⌘/⌥/⌃). Only sensible for actions that are unavailable most of the
+    /// time (see `Plugin.isAvailable`), since a registered shortcut swallows that key system-wide.
+    var allowsBareKey = false
 }
 
 /// Menu item that runs a closure, so plugins don't need to be NSObjects to build menus.

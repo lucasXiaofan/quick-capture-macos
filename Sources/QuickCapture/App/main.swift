@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         removeLegacyLaunchAgent()
+        DebugSnapshot.installIfRequested()
         NSApp.mainMenu = Self.makeMainMenu()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -83,41 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let config = state.config
-        for plugin in state.enabledPlugins {
-            if !menu.items.isEmpty { menu.addItem(.separator()) }
-            for action in plugin.actions {
-                let item = ClosureMenuItem(action.title, symbol: action.symbol) { [weak plugin] in
-                    // Let the menu close before anything (like a screenshot crosshair) appears.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { plugin?.perform(action) }
-                }
-                if let (key, mods) = config.shortcut(action, of: plugin)?.menuKeyEquivalent {
-                    item.keyEquivalent = key
-                    item.keyEquivalentModifierMask = mods
-                }
-                menu.addItem(item)
-            }
-            plugin.menuItems().forEach(menu.addItem)
-        }
-        if !menu.items.isEmpty { menu.addItem(.separator()) }
-
-        if !state.setupIssues.isEmpty || !state.enabledPlugins.allSatisfy(\.isReady) {
-            let page = state.enabledPlugins.first { !$0.isReady || !$0.setupIssues.isEmpty }?.id
-            menu.addItem(ClosureMenuItem("Finish Setup…", symbol: "exclamationmark.circle") { [weak self] in
-                self?.showSetup(page: page ?? "general")
-            })
-        }
-        let settings = ClosureMenuItem("Settings…") { [weak self] in
-            guard let self else { return }
-            self.windows.showSettings(state: self.state)
-        }
-        if let action = state.core.action("open_settings"), let (key, mods) = config.shortcut(action, of: state.core)?.menuKeyEquivalent {
-            settings.keyEquivalent = key
-            settings.keyEquivalentModifierMask = mods
-        }
-        menu.addItem(settings)
-        menu.addItem(NSMenuItem(title: "Quit Quick Capture", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        StatusMenu.rebuild(menu, state: state) { [weak self] page in self?.showSetup(page: page) }
     }
 }
 
