@@ -51,6 +51,7 @@ struct FlowLayout: Layout {
 /// Shown after a recording (and from "Edit"): pick an existing tag or type a new one, add a note.
 struct VideoPromptView: View {
     let title: String
+    var question = "What's this video about?"
     let onSave: (String?, String) -> Void
     let onCancel: () -> Void
     /// Only for a recording that just finished: throw it away (asks first).
@@ -62,9 +63,10 @@ struct VideoPromptView: View {
     @State private var newTag = ""
     @FocusState private var noteFocused: Bool
 
-    init(title: String, tags: [String], tag: String?, note: String,
+    init(title: String, question: String = "What's this video about?", tags: [String], tag: String?, note: String,
          onSave: @escaping (String?, String) -> Void, onCancel: @escaping () -> Void, onDiscard: (() -> Void)? = nil) {
         self.title = title
+        self.question = question
         self.onSave = onSave
         self.onCancel = onCancel
         self.onDiscard = onDiscard
@@ -76,7 +78,7 @@ struct VideoPromptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("What's this video about?").font(.headline)
+                Text(question).font(.headline)
                 Text(title).font(.caption).foregroundStyle(.secondary)
             }
             FlowLayout(spacing: 6) {
@@ -167,32 +169,126 @@ struct QuickPlayView: View {
     }
 }
 
-/// Kanban board: quick-play slots on top, then one column per tag (plus Untagged), newest video first.
-/// Drag a card to another column to retag it, or onto a slot to make it a quick-play video.
+final class DashboardTab: ObservableObject {
+    @Published var kind = MediaKind.video
+}
+
+/// Media Capture's dashboard: Videos, Selfies and Recordings, each a Kanban board with one column per tag
+/// (tags are shared) plus Untagged, newest first. Drag a card to another column to retag it. Videos also have
+/// the quick-play slots on top; recordings show their transcript.
 struct VideoDashboardView: View {
     let plugin: VideoNotesPlugin
-    @ObservedObject var store: VideoStore
+    @ObservedObject var tab: DashboardTab
     @ObservedObject var state: AppState
     @ObservedObject var recorder: VideoRecorder
+    @ObservedObject var meeting: MeetingRecorder
 
     @State private var managingTags = false
     @State private var search = ""
-
-    private var columns: [String?] { [nil] + plugin.allTags.map { Optional($0) } }
 
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
-            if store.videos.isEmpty {
-                emptyState
-            } else {
-                QuickSlotStrip(plugin: plugin, store: store)
-                    .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 4)
+            MediaBoard(plugin: plugin, store: plugin.store(tab.kind), kind: tab.kind, search: search,
+                       recorder: recorder, meeting: meeting)
+                .id(tab.kind)
+        }
+        .frame(minWidth: 760, minHeight: 460)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $managingTags) { ManageTagsView(plugin: plugin, state: state) { managingTags = false } }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            Text("Media Capture").font(.title3.weight(.semibold))
+            Picker("", selection: $tab.kind) {
+                ForEach(MediaKind.allCases) { kind in
+                    Label("\(kind.title) \(plugin.store(kind).videos.count)", systemImage: kind.symbol).tag(kind)
+                }
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            Spacer(minLength: 12)
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(tab.kind == .audio ? "Search notes, tags, transcripts" : "Search notes and tags", text: $search)
+                    .textFieldStyle(.plain)
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.secondary.opacity(0.12)))
+            .frame(maxWidth: 240)
+            if tab.kind != .selfie {
+                VolumeSlider(plugin: plugin, compact: true)
+                    .help("Playback volume on top of your Mac's volume")
+            }
+            CaptureButton(plugin: plugin, kind: tab.kind, recorder: recorder, meeting: meeting)
+            Menu {
+                Button("New Tag…") { plugin.promptNewTag() }
+                Button("Manage Tags…") { managingTags = true }
+                Divider()
+                if tab.kind == .video { Button("Compress All Videos") { plugin.compressAll() } }
+                if tab.kind == .audio { Button("Transcribe a Recording Again…") { plugin.transcribeAgain() } }
+                Button("Show \(tab.kind.title) in Finder") { plugin.revealLibrary(tab.kind) }
+            } label: { Image(systemName: "ellipsis.circle") }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+}
+
+/// Record / Take Selfie / Record Meeting, or Stop while that kind is recording.
+private struct CaptureButton: View {
+    let plugin: VideoNotesPlugin
+    let kind: MediaKind
+    @ObservedObject var recorder: VideoRecorder
+    @ObservedObject var meeting: MeetingRecorder
+
+    var body: some View {
+        let (title, symbol, actionID, stop): (String, String, String, Bool) = switch kind {
+        case .video: recorder.isRecording ? ("Stop", "stop.fill", "stop", true) : ("Record", "record.circle", "record", false)
+        case .selfie: ("Take Selfie", "camera", "selfie", false)
+        case .audio: meeting.isRecording ? ("Stop", "stop.fill", "meeting_stop", true) : ("Record Meeting", "waveform.circle", "meeting", false)
+        }
+        Button { plugin.action(actionID).map(plugin.perform) } label: { Label(title, systemImage: symbol) }
+            .buttonStyle(.borderedProminent).tint(kind == .selfie ? .accentColor : .red)
+            .help(stop ? "Stop recording (\(plugin.shortcutText(actionID)))" : "\(title) (\(plugin.shortcutText(actionID)))")
+    }
+}
+
+/// One library: empty state, or (videos only) the quick-play strip and the tag columns.
+private struct MediaBoard: View {
+    let plugin: VideoNotesPlugin
+    @ObservedObject var store: VideoStore
+    let kind: MediaKind
+    let search: String
+    @ObservedObject var recorder: VideoRecorder
+    @ObservedObject var meeting: MeetingRecorder
+
+    private var columns: [String?] { [nil] + plugin.allTags.map { Optional($0) } }
+
+    var body: some View {
+        if store.videos.isEmpty {
+            emptyState
+        } else {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("\(store.videos.count) \(kind.noun)\(store.videos.count == 1 ? "" : "s") · \(formattedSize(store.totalSize))")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.top, 10)
+                if kind == .video {
+                    QuickSlotStrip(plugin: plugin, store: store)
+                        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
+                }
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 14) {
                         ForEach(columns, id: \.self) { column in
-                            VideoColumn(plugin: plugin, store: store, tag: column, search: search)
+                            VideoColumn(plugin: plugin, store: store, kind: kind, tag: column, search: search)
                         }
                         Button { plugin.promptNewTag() } label: {
                             Label("New Tag", systemImage: "plus")
@@ -207,66 +303,19 @@ struct VideoDashboardView: View {
                 }
             }
         }
-        .frame(minWidth: 720, minHeight: 460)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(isPresented: $managingTags) { ManageTagsView(plugin: plugin, store: store, state: state) { managingTags = false } }
-    }
-
-    private var toolbar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Video Notes").font(.title3.weight(.semibold))
-                Text("\(store.videos.count) video\(store.videos.count == 1 ? "" : "s") · \(formattedSize(store.totalSize))")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
-            HStack(spacing: 4) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search notes and tags", text: $search).textFieldStyle(.plain)
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.secondary.opacity(0.12)))
-            .frame(maxWidth: 240)
-            VolumeSlider(plugin: plugin, compact: true)
-                .help("Playback volume on top of your Mac's volume")
-            recordButton
-            Menu {
-                Button("New Tag…") { plugin.promptNewTag() }
-                Button("Manage Tags…") { managingTags = true }
-                Divider()
-                Button("Compress All Videos") { plugin.compressAll() }
-                Button("Show in Finder") { plugin.revealLibrary() }
-            } label: { Image(systemName: "ellipsis.circle") }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-    }
-
-    @ViewBuilder private var recordButton: some View {
-        if recorder.isRecording {
-            Button { plugin.action("stop").map(plugin.perform) } label: {
-                Label("Stop", systemImage: "stop.fill")
-            }
-            .buttonStyle(.borderedProminent).tint(.red)
-        } else {
-            Button { plugin.action("record").map(plugin.perform) } label: {
-                Label("Record", systemImage: "record.circle")
-            }
-            .buttonStyle(.borderedProminent).tint(.red)
-            .help("Record a new video (\(plugin.shortcutText("record")))")
-        }
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "video.badge.plus").font(.system(size: 44)).foregroundStyle(.tertiary)
-            Text("No videos yet").font(.title3.weight(.semibold))
-            Text("Press \(plugin.shortcutText("record")) anywhere to record one.").foregroundStyle(.secondary)
-            recordButton.controlSize(.large)
+        let (title, hint): (String, String) = switch kind {
+        case .video: ("No videos yet", "Press \(plugin.shortcutText("record")) anywhere to record one.")
+        case .selfie: ("No selfies yet", "Press \(plugin.shortcutText("selfie")) to see yourself, and again to take the photo.")
+        case .audio: ("No recordings yet", "Press \(plugin.shortcutText("meeting")) to record a meeting; it's transcribed when you stop.")
+        }
+        return VStack(spacing: 12) {
+            Image(systemName: kind.symbol).font(.system(size: 44)).foregroundStyle(.tertiary)
+            Text(title).font(.title3.weight(.semibold))
+            Text(hint).foregroundStyle(.secondary)
+            CaptureButton(plugin: plugin, kind: kind, recorder: recorder, meeting: meeting).controlSize(.large)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -341,7 +390,6 @@ private struct QuickSlotTile: View {
 /// Reorder (drag rows), add, and delete tags; deleting asks first and keeps the videos.
 private struct ManageTagsView: View {
     let plugin: VideoNotesPlugin
-    @ObservedObject var store: VideoStore
     @ObservedObject var state: AppState
     let close: () -> Void
     @State private var selection = Set<String>()
@@ -358,7 +406,7 @@ private struct ManageTagsView: View {
                     HStack {
                         Text(tag)
                         Spacer()
-                        Text("\(store.videos.filter { $0.tag == tag }.count)").foregroundStyle(.secondary)
+                        Text("\(MediaKind.allCases.flatMap { plugin.store($0).videos }.filter { $0.tag == tag }.count)").foregroundStyle(.secondary)
                     }
                 }
                 .onMove { source, destination in
@@ -394,6 +442,7 @@ private struct ManageTagsView: View {
 struct VideoColumn: View {
     let plugin: VideoNotesPlugin
     @ObservedObject var store: VideoStore
+    var kind = MediaKind.video
     let tag: String?
     var search = ""
     @State private var targeted = false
@@ -404,6 +453,7 @@ struct VideoColumn: View {
         let query = search.trimmingCharacters(in: .whitespaces)
         let items = query.isEmpty ? all : all.filter {
             $0.title.localizedCaseInsensitiveContains(query) || ($0.tag ?? "").localizedCaseInsensitiveContains(query)
+                || (store.transcripts[$0.file]?.localizedCaseInsensitiveContains(query) ?? false)
         }
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
@@ -428,9 +478,15 @@ struct VideoColumn: View {
             .modifier(TagDrag(tag: tag))
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(items) { VideoCard(plugin: plugin, store: store, item: $0) }
+                    ForEach(items) { item in
+                        if kind == .audio {
+                            RecordingCard(plugin: plugin, store: store, item: item, query: query)
+                        } else {
+                            VideoCard(plugin: plugin, store: store, kind: kind, item: item)
+                        }
+                    }
                     if items.isEmpty {
-                        Text(query.isEmpty ? "Drop videos here" : "No matches")
+                        Text(query.isEmpty ? "Drop \(kind.noun)s here" : "No matches")
                             .font(.caption).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity, minHeight: 60)
                     }
@@ -464,22 +520,24 @@ private struct TagDrag: ViewModifier {
     }
 }
 
+/// A video or selfie: thumbnail on top, click to play (videos) or open in Preview (selfies).
 private struct VideoCard: View {
     let plugin: VideoNotesPlugin
     @ObservedObject var store: VideoStore
+    var kind = MediaKind.video
     let item: VideoItem
     @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear
-                .aspectRatio(16 / 9, contentMode: .fit)
+                .aspectRatio(kind == .selfie ? 4 / 3 : 16 / 9, contentMode: .fit)
                 .overlay { Thumbnail(store: store, item: item) }
                 .overlay {
                     if hovering {
                         ZStack {
                             Color.black.opacity(0.25)
-                            Image(systemName: "play.circle.fill")
+                            Image(systemName: kind == .selfie ? "arrow.up.left.and.arrow.down.right.circle.fill" : "play.circle.fill")
                                 .font(.system(size: 34)).foregroundStyle(.white).shadow(radius: 4)
                         }
                     }
@@ -504,7 +562,7 @@ private struct VideoCard: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture { plugin.play(item) }
+            .onTapGesture { plugin.play(item, kind: kind) }
 
             HStack(alignment: .top, spacing: 6) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -532,6 +590,18 @@ private struct VideoCard: View {
     }
 
     @ViewBuilder private var actions: some View {
+        if kind == .selfie {
+            Button("Open in Preview") { plugin.play(item, kind: kind) }
+            Button("Edit Tag & Note…") { plugin.edit(item.file, kind: kind) }
+            Button("Show in Finder") { plugin.reveal(item, kind: kind) }
+            Divider()
+            Button("Move to Trash", role: .destructive) { plugin.delete(item, kind: kind) }
+        } else {
+            videoActions
+        }
+    }
+
+    @ViewBuilder private var videoActions: some View {
         Button("Play") { plugin.play(item) }
         Button("Open in QuickTime Player") { plugin.openInDefaultPlayer(item) }
         Button("Edit Tag & Note…") { plugin.edit(item.file) }
@@ -550,6 +620,89 @@ private struct VideoCard: View {
     }
 }
 
+/// A meeting recording and its transcript together: play the audio, open the transcript, and see its
+/// first lines (or the lines matching the search).
+private struct RecordingCard: View {
+    @ObservedObject var plugin: VideoNotesPlugin
+    @ObservedObject var store: VideoStore
+    let item: VideoItem
+    var query = ""
+    @ObservedObject private var cache = Thumbnails.shared
+    @State private var hovering = false
+
+    var body: some View {
+        let busy = plugin.transcribing.contains(item.file)
+        let hasTranscript = store.transcripts[item.file] != nil
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "waveform").font(.system(size: 16, weight: .semibold)).foregroundStyle(.tint)
+                    .frame(width: 30, height: 30)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.accentColor.opacity(0.12)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title).font(.callout.weight(.medium)).lineLimit(2)
+                    Text(([item.created.formatted(date: .abbreviated, time: .shortened), cache.duration(for: item), formattedSize(item.size)] as [String?])
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Menu { actions } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .opacity(hovering ? 1 : 0.4)
+            }
+            if busy {
+                Label(hasTranscript ? "Transcribing again…" : "Compressing & transcribing…", systemImage: "hourglass")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let lines = preview, !lines.isEmpty {
+                Text(lines).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+                    .contentShape(Rectangle())
+                    .onTapGesture { plugin.openTranscript(item) }
+                    .help("Open the transcript")
+            } else if !busy && !hasTranscript {
+                Text("No transcript").font(.caption).foregroundStyle(.tertiary)
+            }
+            HStack(spacing: 8) {
+                Button { plugin.play(item, kind: .audio) } label: { Label("Play", systemImage: "play.fill") }
+                Button { plugin.openTranscript(item) } label: { Label("Transcript", systemImage: "doc.text") }
+                    .disabled(!hasTranscript)
+            }
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(hovering ? 0.4 : 0.2)))
+        .shadow(color: .black.opacity(hovering ? 0.12 : 0.04), radius: hovering ? 6 : 2, y: 1)
+        .onHover { hovering = $0 }
+        .draggable(item.file)
+        .contextMenu { actions }
+        .task(id: Thumbnails.key(item)) {
+            if let url = store.url(item) { await cache.load(item, url: url) }
+        }
+    }
+
+    /// The transcript's lines after its header: the ones matching the search, or the first few.
+    private var preview: String? {
+        guard let text = store.transcripts[item.file] else { return nil }
+        let lines = text.split(whereSeparator: \.isNewline).dropFirst(2).map(String.init).filter { !$0.isEmpty }
+        let shown = query.isEmpty ? Array(lines.prefix(4)) : Array(lines.filter { $0.localizedCaseInsensitiveContains(query) }.prefix(4))
+        return (shown.isEmpty ? Array(lines.prefix(4)) : shown).joined(separator: "\n")
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button("Play") { plugin.play(item, kind: .audio) }
+        Button("Open Transcript") { plugin.openTranscript(item) }.disabled(store.transcripts[item.file] == nil)
+        Button("Edit Tag & Note…") { plugin.edit(item.file, kind: .audio) }
+        Button("Transcribe Again") { plugin.transcribeAgain(item) }.disabled(plugin.transcribing.contains(item.file))
+        Button("Open in QuickTime Player") { plugin.openInDefaultPlayer(item, kind: .audio) }
+        Button("Show in Finder") { plugin.reveal(item, kind: .audio) }
+        Divider()
+        Button("Move to Trash", role: .destructive) { plugin.delete(item, kind: .audio) }
+    }
+}
+
 /// A video's first frame, loaded in the background and cached by file and size (compression changes both).
 private struct Thumbnail: View {
     @ObservedObject var store: VideoStore
@@ -562,7 +715,7 @@ private struct Thumbnail: View {
             if let image = cache.image(for: item) {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
-                Image(systemName: "video").foregroundStyle(.tertiary)
+                Image(systemName: store.kind.symbol).foregroundStyle(.tertiary)
             }
         }
         .task(id: Thumbnails.key(item)) {
@@ -593,6 +746,18 @@ final class Thumbnails: ObservableObject {
         guard images[key] == nil, !loading.contains(key) else { return }
         loading.insert(key)
         defer { loading.remove(key) }
+        if MediaKind.selfie.extensions.contains(url.pathExtension.lowercased()) {
+            // Photos: a downscaled copy, decoded off the main thread.
+            let image = await Task.detached { () -> CGImage? in
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 520,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                ] as CFDictionary)
+            }.value
+            if let image { images[key] = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)) }
+            return
+        }
         let asset = AVURLAsset(url: url)
         if let duration = try? await asset.load(.duration) { durations[key] = duration.seconds }
         let generator = AVAssetImageGenerator(asset: asset)

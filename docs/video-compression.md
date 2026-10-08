@@ -1,4 +1,4 @@
-# Video compression (Video Notes)
+# Video compression (Media Capture)
 
 Video is about 95% of a recording's size (measured: 2.1–2.75 Mbit/s of picture vs. 130–150 kbit/s of sound), so the savings come from the picture. Every recording is shrunk in the background after it's saved, to a fixed target measured on real recordings. The code is `Sources/QuickCapture/Plugins/VideoNotes/VideoCompressor.swift` (`VideoCompressor.target`).
 

@@ -23,6 +23,9 @@ struct VideoNotesSettings: PluginSettings {
     var meetingCompression = AudioCompression.compact.rawValue
     /// The small REC pill at the top right while a meeting is recorded (never visible in screen sharing).
     var meetingIndicator = true
+    /// After a selfie / a meeting recording, ask for a tag and note (Skip leaves it untagged).
+    var selfiePrompt = true
+    var meetingPrompt = true
     /// Speech to text once a meeting recording has stopped; see Transcriber.
     var transcriptionEngine = Transcriber.Engine.auto.rawValue
     /// Whisper language code ("zh", "en", …) or "auto".
@@ -41,23 +44,25 @@ struct VideoNotesSettings: PluginSettings {
         case selfieMirror = "selfie_mirror"
         case meetingSystemAudio = "meeting_system_audio", meetingCompression = "meeting_compression"
         case meetingIndicator = "meeting_indicator"
+        case selfiePrompt = "selfie_prompt", meetingPrompt = "meeting_prompt"
         case transcriptionEngine = "transcription_engine", transcriptionLanguage = "transcription_language"
         case transcriptionPrompt = "transcription_prompt", transcriptionModel = "transcription_model"
     }
 }
 
-/// Record short self-control videos with one shortcut, tag them, and replay the ones you need in a second.
+/// Media Capture (id "video_notes" for config compatibility): short self-control videos, daily selfies and
+/// transcribed meeting recordings, each with one shortcut, all tagged and browsable in one dashboard.
 @MainActor
 final class VideoNotesPlugin: ObservableObject, Plugin {
     nonisolated static let pluginID = "video_notes"
 
     let id = VideoNotesPlugin.pluginID
-    let name = "Video Notes"
-    let summary = "Record a quick video with the Mac camera, tag it, and replay your favourites with one shortcut. Also a daily selfie, and meeting audio transcribed on this Mac."
+    let name = "Media Capture"
+    let summary = "Record a quick video, take a daily selfie, or record a meeting (transcribed on this Mac) with one shortcut; tag them and find them in one dashboard."
     let symbol = "video.badge.plus"
     var enabledByDefault: Bool { false }
     let actions = [
-        PluginAction(id: "dashboard", title: "Video Dashboard", symbol: "rectangle.split.3x1", defaultShortcut: nil),
+        PluginAction(id: "dashboard", title: "Media Dashboard", symbol: "rectangle.split.3x1", defaultShortcut: nil),
         PluginAction(id: "record", title: "Record (press again to pause)", symbol: "record.circle", defaultShortcut: "<ctrl>+<alt>+r"),
         PluginAction(id: "record_screen", title: "Record Screen + Camera (press again to pause)", symbol: "pip",
                      defaultShortcut: "<ctrl>+<alt>+<shift>+r"),
@@ -73,20 +78,27 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         PluginAction(id: "play_\($0)", title: "Play Quick Slot \($0) Directly", symbol: "\($0).circle", defaultShortcut: nil)
     }
 
-    let store = VideoStore()
+    /// Videos; `selfies` and `recordings` are the other two libraries (see `MediaKind`).
+    let store = VideoStore(kind: .video)
+    let selfies = VideoStore(kind: .selfie)
+    let recordings = VideoStore(kind: .audio)
+    /// Tag and note given to a meeting before its file is ready (compression runs after stop), by base name.
+    private var pendingMeta: [String: (tag: String?, note: String)] = [:]
     let recorder = VideoRecorder()
     let meeting = MeetingRecorder()
     private let selfie = SelfieCamera()
     /// Meeting recordings being compressed or transcribed, by file name.
     @Published private(set) var transcribing: Set<String> = []
     private var dashboard: NSWindow?
+    /// Which library the dashboard shows; lets the menu open it on Selfies or Recordings.
+    let dashboardTab = DashboardTab()
     private var prompt: NSPanel?
     private var picker: KeyPanel?
     private let player = VideoPlayerWindow()
     /// Set when the user discards while recording: the file is trashed as soon as it's complete.
     private var discardWhenFinished = false
-    /// The just-recorded video whose tag prompt is open (the discard shortcut applies to it).
-    private var freshFile: String?
+    /// The just-recorded video or selfie whose tag prompt is open (the discard shortcut applies to it).
+    private var freshFile: (kind: MediaKind, file: String)?
 
     var settings: VideoNotesSettings { state.settings(VideoNotesSettings.self, for: id) }
 
@@ -103,8 +115,24 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     }
 
     /// Selfies and meeting audio sit next to the video library.
-    var selfieDirectory: URL { libraryDirectory.deletingLastPathComponent().appendingPathComponent("quick-capture-selfie", isDirectory: true) }
-    var audioDirectory: URL { libraryDirectory.deletingLastPathComponent().appendingPathComponent("quick-capture-audio", isDirectory: true) }
+    var selfieDirectory: URL { directory(.selfie) }
+    var audioDirectory: URL { directory(.audio) }
+
+    func directory(_ kind: MediaKind) -> URL {
+        libraryDirectory.deletingLastPathComponent().appendingPathComponent(kind.folderName, isDirectory: true)
+    }
+
+    func store(_ kind: MediaKind) -> VideoStore {
+        switch kind {
+        case .video: store
+        case .selfie: selfies
+        case .audio: recordings
+        }
+    }
+
+    private func loadLibraries() {
+        for kind in MediaKind.allCases { store(kind).load(from: directory(kind)) }
+    }
 
     func defaultSettings() -> [String: JSONValue] { encodeDefaults(VideoNotesSettings.self) }
 
@@ -147,7 +175,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
             if recorder.isRecording { recorder.stop() } else { Toast.show("Not recording", symbol: "video.slash", isError: true) }
         case "discard":
             if recorder.isRecording { discardRecording() }
-            else if let file = freshFile, prompt?.isVisible == true { discard(file) }
+            else if let fresh = freshFile, prompt?.isVisible == true { discard(fresh.file, kind: fresh.kind) }
             else { Toast.show("Nothing to discard", symbol: "video.slash", isError: true) }
         case "selfie": takeSelfie()
         case "meeting":
@@ -181,7 +209,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     func activate() {
         recorder.onFinish = { [weak self] url, error in self?.recordingFinished(url, error) }
         meeting.onFinish = { [weak self] capture, error in self?.meetingFinished(capture, error) }
-        store.load(from: libraryDirectory)
+        loadLibraries()
         player.gain = Float(settings.volume) / 100
         recoverMeetings()
     }
@@ -201,7 +229,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
 
     func configDidChange() {
         player.gain = Float(settings.volume) / 100
-        if store.directory?.path != libraryDirectory.path { store.load(from: libraryDirectory) }
+        if store.directory?.path != libraryDirectory.path { loadLibraries() }
     }
 
     // MARK: Recording
@@ -215,7 +243,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         }
         Task {
             guard await requestAccess(.video) else {
-                Toast.show("Video Notes needs camera access (System Settings → Privacy → Camera).", symbol: "camera", isError: true)
+                Toast.show("Media Capture needs camera access (System Settings → Privacy → Camera).", symbol: "camera", isError: true)
                 return
             }
             let microphone = settings.microphone ? await requestAccess(.audio) : false
@@ -321,8 +349,14 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
                 return
             }
             do {
-                try selfie.open(saveIn: selfieDirectory, mirror: settings.selfieMirror) { url in
-                    Toast.show("Selfie saved — \(url.lastPathComponent)", symbol: "camera")
+                try selfie.open(saveIn: selfieDirectory, mirror: settings.selfieMirror) { [weak self] url in
+                    guard let self else { return }
+                    selfies.reload()
+                    guard settings.selfiePrompt else { Toast.show("Selfie saved — \(url.lastPathComponent)", symbol: "camera"); return }
+                    // After the photo has been on screen for a moment and the camera window is gone.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                        self?.edit(url.lastPathComponent, kind: .selfie, fresh: true)
+                    }
                 }
             } catch {
                 Toast.show(error.localizedDescription, symbol: "camera", isError: true)
@@ -367,6 +401,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         }
         Toast.show("Meeting saved — compressing, then transcribing…", symbol: "waveform")
         process(partial: capture.partial, destination: capture.destination, compression: capture.compression)
+        if settings.meetingPrompt { askAboutMeeting(capture.destination) }
     }
 
     /// Partial recordings left by a crash or quit: finish them like a normal stop.
@@ -382,6 +417,31 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         }
     }
 
+    /// The tag-and-note prompt right after stopping, while the file is still being compressed. What you enter is
+    /// kept until the file exists, then stored like a video's.
+    private func askAboutMeeting(_ destination: URL) {
+        let base = destination.deletingPathExtension().lastPathComponent
+        showPrompt(title: base, question: "What was this meeting about?", tag: nil, note: "",
+                   onSave: { [weak self] tag, note in
+                       guard let self else { return }
+                       if let tag { addTag(tag) }
+                       if let item = recordings.videos.first(where: { $0.displayName == base }) {
+                           recordings.update(item.file) { $0.tag = tag; $0.note = note }
+                       } else {
+                           pendingMeta[base] = (tag, note)
+                       }
+                       closePrompt()
+                   }, onDiscard: nil)
+    }
+
+    private func applyPendingMeta() {
+        for (base, meta) in pendingMeta {
+            guard let item = recordings.videos.first(where: { $0.displayName == base }) else { continue }
+            recordings.update(item.file) { $0.tag = meta.tag; $0.note = meta.note }
+            pendingMeta[base] = nil
+        }
+    }
+
     /// Compresses the partial recording into the final .m4a, then writes a transcript next to it.
     private func process(partial: URL, destination: URL, compression: AudioCompression) {
         let file = destination.lastPathComponent
@@ -390,6 +450,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         Task {
             defer { transcribing.remove(file) }
             var audio = destination
+            defer { recordings.reload() }
             do {
                 try await compression.finalize(partial, to: destination)
             } catch {
@@ -399,6 +460,8 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
                 Toast.show("Couldn't compress the recording (\(error.localizedDescription)); kept it as .mov.",
                            symbol: "exclamationmark.triangle", isError: true)
             }
+            recordings.reload()
+            applyPendingMeta()
             await transcribe(audio)
         }
     }
@@ -418,6 +481,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
             let duration = try? await AVURLAsset(url: audio).load(.duration).seconds
             let title = audio.deletingPathExtension().lastPathComponent
             try Transcriber.text(result, title: title, duration: duration).write(to: transcript, atomically: true, encoding: .utf8)
+            recordings.reload()
             Toast.show("Transcript ready — \(transcript.lastPathComponent)", symbol: "text.quote")
         } catch {
             Toast.show("Saved \(audio.lastPathComponent), but transcription failed: \(error.localizedDescription)",
@@ -428,6 +492,23 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     func revealAudio() {
         try? FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
         NSWorkspace.shared.open(audioDirectory)
+    }
+
+    /// Writes a recording's transcript again (dashboard card).
+    func transcribeAgain(_ item: VideoItem) {
+        guard let url = recordings.url(item), !transcribing.contains(item.file) else { return }
+        Toast.show("Transcribing \(item.title)…", symbol: "text.quote")
+        transcribing.insert(item.file)
+        Task {
+            await transcribe(url)
+            transcribing.remove(item.file)
+            recordings.reload()
+        }
+    }
+
+    func openTranscript(_ item: VideoItem) {
+        guard let url = recordings.transcriptURL(item) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// Picks a recording and writes its transcript again (e.g. after installing whisper.cpp or changing the language).
@@ -447,8 +528,8 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     }
 
     func menuItems() -> [NSMenuItem] {
-        [ClosureMenuItem("Show Selfies in Finder", symbol: "person.crop.square") { [weak self] in self?.revealSelfies() },
-         ClosureMenuItem("Show Meeting Recordings in Finder", symbol: "waveform") { [weak self] in self?.revealAudio() },
+        [ClosureMenuItem("Selfies…", symbol: "person.crop.square") { [weak self] in self?.showDashboard(.selfie) },
+         ClosureMenuItem("Meeting Recordings & Transcripts…", symbol: "waveform") { [weak self] in self?.showDashboard(.audio) },
          ClosureMenuItem("Transcribe a Recording Again…", symbol: "text.quote") { [weak self] in self?.transcribeAgain() }]
     }
 
@@ -466,23 +547,22 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         recorder.stop()
     }
 
-    /// Throws away a recording whose tag prompt is open.
-    private func discard(_ file: String) {
-        guard confirmDiscard(keepTitle: "Keep") else { return }
-        prompt?.orderOut(nil)
-        freshFile = nil
+    /// Throws away a recording or selfie whose tag prompt is open.
+    private func discard(_ file: String, kind: MediaKind = .video) {
+        guard confirmDiscard(keepTitle: "Keep", noun: kind == .selfie ? "selfie" : "recording") else { return }
+        closePrompt()
         do {
-            try store.delete(file)
-            Toast.show("Recording discarded (moved to the Trash)", symbol: "trash")
+            try store(kind).delete(file)
+            Toast.show("\(kind == .selfie ? "Selfie" : "Recording") discarded (moved to the Trash)", symbol: "trash")
         } catch {
             Toast.show(error.localizedDescription, isError: true)
         }
     }
 
-    private func confirmDiscard(keepTitle: String) -> Bool {
+    private func confirmDiscard(keepTitle: String, noun: String = "recording") -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Discard this recording?"
-        alert.informativeText = "It moves to the Trash and won't appear in Video Notes."
+        alert.messageText = "Discard this \(noun)?"
+        alert.informativeText = "It moves to the Trash and won't appear in Media Capture."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: keepTitle)
@@ -507,7 +587,8 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
 
     /// Dashboard order: the saved list, then any tag found only on videos.
     var allTags: [String] {
-        settings.tags + Set(store.videos.compactMap(\.tag)).subtracting(settings.tags).sorted()
+        let used = Set(MediaKind.allCases.flatMap { store($0).videos.compactMap(\.tag) })
+        return settings.tags + used.subtracting(settings.tags).sorted()
     }
 
     func setTags(_ tags: [String]) { try? update { $0.tags = tags } }
@@ -532,17 +613,17 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     @discardableResult
     func deleteTags(_ names: [String]) -> Bool {
         guard !names.isEmpty else { return false }
-        let affected = store.videos.filter { $0.tag.map(names.contains) == true }.count
+        let affected = MediaKind.allCases.flatMap { store($0).videos }.filter { $0.tag.map(names.contains) == true }.count
         let alert = NSAlert()
         alert.messageText = names.count == 1 ? "Delete the tag “\(names[0])”?" : "Delete \(names.count) tags?"
         alert.informativeText = (names.count > 1 ? names.joined(separator: ", ") + "\n\n" : "")
-            + "\(affected) video\(affected == 1 ? "" : "s") will move to Untagged. No video is deleted."
+            + "\(affected) item\(affected == 1 ? "" : "s") will move to Untagged. Nothing is deleted."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Delete Tag\(names.count == 1 ? "" : "s")")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return false }
-        store.clearTags(Set(names))
+        for kind in MediaKind.allCases { store(kind).clearTags(Set(names)) }
         setTags(allTags.filter { !names.contains($0) })
         return true
     }
@@ -562,37 +643,39 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
 
     // MARK: Library actions
 
-    func play(_ item: VideoItem) {
-        guard let url = store.url(item) else { return }
-        player.play(url, title: item.title)
+    /// Videos and recordings play in the small player; selfies open in Preview.
+    func play(_ item: VideoItem, kind: MediaKind = .video) {
+        guard let url = store(kind).url(item) else { return }
+        if kind == .selfie { NSWorkspace.shared.open(url) } else { player.play(url, title: item.title) }
     }
 
-    func openInDefaultPlayer(_ item: VideoItem) {
-        guard let url = store.url(item) else { return }
+    func openInDefaultPlayer(_ item: VideoItem, kind: MediaKind = .video) {
+        guard let url = store(kind).url(item) else { return }
         NSWorkspace.shared.open(url)
     }
 
-    func reveal(_ item: VideoItem) {
-        guard let url = store.url(item) else { return }
+    func reveal(_ item: VideoItem, kind: MediaKind = .video) {
+        guard let url = store(kind).url(item) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    func revealLibrary() {
-        let dir = libraryDirectory
+    func revealLibrary(_ kind: MediaKind = .video) {
+        let dir = directory(kind)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         NSWorkspace.shared.open(dir)
     }
 
-    func delete(_ item: VideoItem) {
+    func delete(_ item: VideoItem, kind: MediaKind = .video) {
         let alert = NSAlert()
-        alert.messageText = "Move this video to the Trash?"
+        alert.messageText = "Move this \(kind.noun) to the Trash?"
         alert.informativeText = "\(item.title) · \(formattedSize(item.size))"
+            + (kind == .audio && store(kind).transcriptURL(item) != nil ? "\nIts transcript goes too." : "")
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        do { try store.delete(item.file) } catch { Toast.show(error.localizedDescription, isError: true) }
+        do { try store(kind).delete(item.file) } catch { Toast.show(error.localizedDescription, isError: true) }
     }
 
     // MARK: Windows
@@ -602,19 +685,46 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    /// Tag-and-note prompt for one video. `fresh` (just recorded) adds a Discard button.
-    func edit(_ file: String, fresh: Bool = false) {
-        guard let item = store.video(file) else { return }
+    /// Tag-and-note prompt for one item. `fresh` (just recorded or taken) adds a Discard button.
+    func edit(_ file: String, kind: MediaKind = .video, fresh: Bool = false) {
+        let library = store(kind)
+        library.reload()
+        guard let item = library.video(file) else { return }
+        freshFile = fresh ? (kind, file) : nil
+        let question = switch kind {
+        case .video: "What's this video about?"
+        case .selfie: "How are you today?"
+        case .audio: "What was this meeting about?"
+        }
+        showPrompt(title: item.displayName, question: question, tag: item.tag, note: item.note,
+                   onSave: { [weak self] tag, note in
+                       guard let self else { return }
+                       if let tag { addTag(tag) }
+                       store(kind).update(file) { $0.tag = tag; $0.note = note }
+                       closePrompt()
+                   },
+                   onDiscard: fresh ? { [weak self] in self?.discard(file, kind: kind) } : nil)
+    }
+
+    private func closePrompt() {
         prompt?.orderOut(nil)
-        freshFile = fresh ? file : nil
+        freshFile = nil
+    }
+
+    private func showPrompt(title: String, question: String, tag: String?, note: String,
+                            onSave: @escaping (String?, String) -> Void, onDiscard: (() -> Void)?) {
+        prompt?.orderOut(nil)
         let view = VideoPromptView(
-            title: item.displayName, tags: allTags, tag: item.tag, note: item.note,
-            onSave: { [weak self] tag, note in self?.savePrompt(file, tag: tag, note: note) },
-            onCancel: { [weak self] in self?.prompt?.orderOut(nil); self?.freshFile = nil },
-            onDiscard: fresh ? { [weak self] in self?.discard(file) } : nil)
+            title: title, question: question, tags: allTags, tag: tag, note: note,
+            onSave: onSave,
+            onCancel: { [weak self] in self?.closePrompt() },
+            onDiscard: onDiscard)
         let host = NSHostingView(rootView: view)
+        // Non-activating, like Spotlight: it takes the keyboard even when macOS doesn't let a menu-bar app come to
+        // the front (it often doesn't after a global shortcut), so typing goes into the prompt, not the app behind it.
         let panel = KeyPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
-                             styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+                             styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.becomesKeyOnlyIfNeeded = false
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
@@ -624,13 +734,6 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         panel.center()
         prompt = panel
         present(panel)
-    }
-
-    private func savePrompt(_ file: String, tag: String?, note: String) {
-        if let tag { addTag(tag) }
-        store.update(file) { $0.tag = tag; $0.note = note }
-        prompt?.orderOut(nil)
-        freshFile = nil
     }
 
     private func showPicker() {
@@ -666,14 +769,16 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         play(item)
     }
 
-    private func showDashboard() {
-        store.load(from: libraryDirectory)
+    func showDashboard(_ kind: MediaKind? = nil) {
+        loadLibraries()
+        if let kind { dashboardTab.kind = kind }
         if dashboard == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1120, height: 720),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "Video Notes"
+            window.title = "Media Capture"
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: VideoDashboardView(plugin: self, store: store, state: state, recorder: recorder))
+            window.contentView = NSHostingView(rootView: VideoDashboardView(plugin: self, tab: dashboardTab, state: state,
+                                                                            recorder: recorder, meeting: meeting))
             window.setFrameAutosaveName("VideoNotesDashboard")
             window.center()
             dashboard = window
@@ -686,7 +791,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
 
     var setupIssues: [String] {
         let camera = AVCaptureDevice.authorizationStatus(for: .video)
-        return camera == .denied || camera == .restricted ? ["Video Notes needs camera access."] : []
+        return camera == .denied || camera == .restricted ? ["Media Capture needs camera access."] : []
     }
 
     func setupView() -> AnyView? { AnyView(VideoNotesSetupSteps(state: state)) }
@@ -749,11 +854,11 @@ private struct VideoNotesOverview: View {
                 Image(systemName: "rectangle.split.3x1.fill").font(.system(size: 22)).foregroundStyle(.tint).frame(width: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Dashboard").font(.headline)
-                    Text("\(store.videos.count) video\(store.videos.count == 1 ? "" : "s") · \(formattedSize(store.totalSize)) · \(plugin.allTags.count) tag\(plugin.allTags.count == 1 ? "" : "s")")
+                    Text("\(store.videos.count) video\(store.videos.count == 1 ? "" : "s") · \(plugin.selfies.videos.count) selfie\(plugin.selfies.videos.count == 1 ? "" : "s") · \(plugin.recordings.videos.count) recording\(plugin.recordings.videos.count == 1 ? "" : "s") · \(plugin.allTags.count) tag\(plugin.allTags.count == 1 ? "" : "s")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Show in Finder") { plugin.revealLibrary() }
+                Button("Show in Finder") { plugin.revealLibrary(); }
                 Button("Open Dashboard") { plugin.action("dashboard").map(plugin.perform) }
                     .buttonStyle(.borderedProminent)
             }
@@ -821,6 +926,7 @@ private struct VideoNotesSettingsSections: View {
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section {
+            Toggle("Ask for a tag and note after each selfie", isOn: Binding(get: { s.selfiePrompt }, set: { v in try? plugin.update { $0.selfiePrompt = v } }))
             Toggle("Save selfies mirrored (as in the preview)", isOn: Binding(get: { s.selfieMirror }, set: { v in try? plugin.update { $0.selfieMirror = v } }))
             LabeledContent("Folder") {
                 Button("Show in Finder") { plugin.revealSelfies() }
@@ -837,6 +943,7 @@ private struct VideoNotesSettingsSections: View {
                                                  set: { v in try? plugin.update { $0.meetingCompression = v.rawValue } })) {
                 ForEach(AudioCompression.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            Toggle("Ask for a tag and note when a recording stops", isOn: Binding(get: { s.meetingPrompt }, set: { v in try? plugin.update { $0.meetingPrompt = v } }))
             Toggle("Show a REC timer at the top right", isOn: Binding(get: { s.meetingIndicator }, set: { v in try? plugin.update { $0.meetingIndicator = v } }))
             LabeledContent("Folder") {
                 Button("Show in Finder") { plugin.revealAudio() }

@@ -1,12 +1,18 @@
-# Video Notes
+# Media Capture
 
-Record short videos of yourself — usually about self-control, to encourage your future self — with one shortcut, tag them, and replay the right one in a second. Everything stays on your Mac.
+Three kinds of capture, each one shortcut away, all tagged and found in one dashboard. Everything stays on your Mac.
+
+- **Videos** of yourself — usually about self-control, to encourage your future self — tagged and replayed in a second.
+- **Selfies**, e.g. one a day.
+- **Meeting recordings** of your microphone and the Mac's sound, transcribed into a `.txt` once you stop.
+
+(Called Video Notes before; its config key is still `video_notes`, so settings, shortcuts and folders carry over.)
 
 ## Shortcuts (change them in Settings)
 
 | Action | Default | |
 |---|---|---|
-| Open dashboard | (none) | First item in the menu bar section, and **Open Dashboard** at the top of Settings → Video Notes |
+| Open dashboard | (none) | First item in the menu bar section, and **Open Dashboard** at the top of Settings → Media Capture. **Plugins ▸ Media Capture ▸ Selfies… / Meeting Recordings & Transcripts…** open it on those tabs |
 | Record | ⌃⌥R | Pressing it again while recording pauses / resumes |
 | Record screen + camera | ⌃⌥⇧R | See [Screen + camera](#screen--camera). Pressing it again pauses / resumes |
 | Pause / resume | ⌃⌥P | In the menu bar only while recording |
@@ -24,7 +30,7 @@ While recording, a small preview with a timer sits at the bottom of the screen.
 
 ⌃⌥⇧R records the display the active window is on at 720p (H.264, 30 fps, as wide as the display's shape: 1152×720 on a 16:10 Mac) with your camera as a rounded square in a corner. Sound is the Mac's own audio plus the microphone (if on), mixed into one track when you stop. The live preview sits exactly where the square will be in the video; Quick Capture's own windows (preview, toasts, prompts) are left out of the recording.
 
-Settings → Video Notes → **Screen + camera**: **Camera size** (10–50% of the video height, default 25%) and **Camera corner** (default bottom left).
+Settings → Media Capture → **Screen + camera**: **Camera size** (10–50% of the video height, default 25%) and **Camera corner** (default bottom left).
 
 They're recorded at high quality, then compressed in the background like camera videos but without the blur: HEVC at 15 fps, which keeps screen text sharp, about 4–6.5 MB per minute. Files are named `Screen yyyy-MM-dd HH.mm.ss.mov`.
 
@@ -32,7 +38,7 @@ Needs **Screen Recording** permission (the first press asks; after granting, rel
 
 ## Selfie
 
-For a daily photo of yourself. ⌃⌥F opens a mirrored live preview in the middle of the screen so you can see how you look; press ⌃⌥F again (or Space, Return, or click it) to take the photo. It stays on screen for a moment, then the window closes. Esc closes without a photo.
+For a daily photo of yourself. ⌃⌥F opens a mirrored live preview in the middle of the screen so you can see how you look; press ⌃⌥F again (or Space, Return, or click it) to take the photo. It stays on screen for a moment, then the window closes and asks for a tag and a note (optional: **Skip** or Esc leaves it untagged, **Discard…** throws the photo away; turn the question off with **Ask for a tag and note after each selfie**, `video_notes.selfie_prompt`). Esc in the camera window closes without a photo.
 
 Photos are JPEGs named `Selfie yyyy-MM-dd HH.mm.ss.jpg` in `<folder>/quick-capture-selfie/`. They're saved mirrored, exactly as the preview showed them; turn **Save selfies mirrored** off in Settings for the camera's unmirrored view (`video_notes.selfie_mirror`). The camera can't take a selfie while it's recording a video.
 
@@ -54,9 +60,11 @@ The Mac's sound needs **Screen Recording** permission (ScreenCaptureKit, the sam
 
    Speech needs very little: recognisers only look below 8 kHz, and HE-AAC rebuilds the high frequencies at a fraction of the bits, so `compact` sounds clear and transcribes as well as the others. Mono halves the size again; meeting audio has nothing worth keeping in stereo. (Opus would be a little smaller still, but AVFoundation can't write it to an `.m4a` that QuickTime and every player opens.) If compression fails, the uncompressed recording is kept as `.mov`.
 
+While it's being compressed, a window asks what the meeting was about: a tag and a note, same as for videos (optional; **Skip** leaves it untagged; turn it off with `video_notes.meeting_prompt`).
+
 2. **Transcription**, once the recording is finished (never live during the meeting). It runs as a separate process while you get on with your day, and writes `Meeting yyyy-MM-dd HH.mm.ss.txt` next to the audio: a header, then one `[mm:ss] sentence` line at a time. A message tells you when it's ready.
 
-Files go to `<folder>/quick-capture-audio/`. **Plugins ▸ Video Notes** has **Show Meeting Recordings in Finder** and **Transcribe a Recording Again…** (for example after installing whisper.cpp or changing the language).
+Files go to `<folder>/quick-capture-audio/`, each recording next to its transcript. The dashboard's **Recordings** tab shows them together (see [Dashboard](#dashboard)); **Transcribe Again** on a card (or **Plugins ▸ Media Capture ▸ Transcribe a Recording Again…**) redoes one, for example after installing whisper.cpp or changing the language.
 
 ### Speech to text
 
@@ -78,13 +86,17 @@ Pick an existing tag or type a new one (each video has one tag), optionally add 
 
 ## Dashboard
 
-The header has search (notes and tags), the playback volume, a **Record** button (Stop while recording) and **⋯** for tags and Finder. Below it, the five **Quick Play** slots: click one to play it, drop a card on one to assign it.
+Three tabs, **Videos**, **Selfies** and **Recordings**, each with its count. The header has search, the playback volume, a capture button for the open tab (**Record**, **Take Selfie**, **Record Meeting**; **Stop** while recording) and **⋯** for tags and Finder.
 
-Then a Kanban board with one column per tag (plus **Untagged**), newest video at the top. Each card shows a thumbnail and the length. Drag a card to another column to change its tag. Click the thumbnail to play (same small player, starts automatically; **Open in QuickTime Player** for the default player). **⋯** on a card, or right-click, for **Edit Tag & Note**, **Quick Play Slot** (1–5; one video per slot), **Compress**, **Show in Finder** and **Move to Trash**. The header and each column show how many videos there are and how much disk space they use, so you know when to clean up.
+Each tab is a Kanban board with one column per tag (plus **Untagged**), newest at the top; the tags are shared by all three. Drag a card to another column to change its tag. **⋯** on a card, or right-click, for **Edit Tag & Note**, **Show in Finder** and **Move to Trash**. The header and each column show how many items there are and how much disk space they use, so you know when to clean up.
+
+- **Videos:** the five **Quick Play** slots sit above the board: click one to play it, drop a card on one to assign it. Each card shows a thumbnail and the length. Click the thumbnail to play (same small player, starts automatically; **Open in QuickTime Player** for the default player). The card menu also has **Quick Play Slot** (1–5; one video per slot) and **Compress**.
+- **Selfies:** click a photo to open it in Preview.
+- **Recordings:** each card holds the audio and its transcript together: **Play** opens the small player, **Transcript** (or a click on the transcript preview) opens the `.txt`. The card shows the first lines of the transcript, or **Compressing & transcribing…** while that's running. Search also looks inside transcripts and shows the matching lines. **Transcribe Again** is in the card menu. Moving a recording to the Trash takes its transcript with it.
 
 ## Volume
 
-Recordings from the Mac's microphone are often quiet. **Volume** (Settings → Video Notes → Playback, or the dashboard header) plays every video louder, 25–800%, without touching the Mac's volume. A soft limiter rounds off the loud parts instead of letting them crackle. It changes playback only, never the files, and doesn't apply to QuickTime Player.
+Recordings from the Mac's microphone are often quiet. **Volume** (Settings → Media Capture → Playback, or the dashboard header) plays every video louder, 25–800%, without touching the Mac's volume. A soft limiter rounds off the loud parts instead of letting them crackle. It changes playback only, never the files, and doesn't apply to QuickTime Player.
 
 ## Tags
 

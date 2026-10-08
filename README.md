@@ -6,7 +6,7 @@ A small menu-bar app that puts useful things behind global shortcuts. Each featu
 |---|---|---|
 | **AI Chat** | ⌃⌥Space | A quick chat with **Claude Code** or **Codex** from any app. It can search the web and read and edit files. Renders Markdown and LaTeX, and every link is clickable. |
 | **Obsidian Capture** | ⌘⇧I / ⌘⇧J | Screenshot or jot a note straight into the Obsidian note you're in (at the cursor) or today's diary. |
-| **Video Notes** | ⌃⌥R | Record a quick video with the Mac camera (or the screen with your camera in a corner, ⌃⌥⇧R), tag it, and replay favourites with ⌃⌥V then 1–5. A Kanban dashboard sorts videos by tag and shows how much disk they use. Also a daily selfie (⌃⌥F) and meeting audio (⌃⌥A: microphone + the Mac's sound, transcribed on this Mac when you stop). Off by default. |
+| **Media Capture** | ⌃⌥R | Record a quick video with the Mac camera (or the screen with your camera in a corner, ⌃⌥⇧R), tag it, and replay favourites with ⌃⌥V then 1–5. Also a daily selfie (⌃⌥F) and meeting recordings (⌃⌥A: microphone + the Mac's sound, transcribed on this Mac when you stop). One dashboard with Videos, Selfies and Recordings (audio next to its transcript), sorted by shared tags. Off by default. |
 | **Skill Manager** | ⌃⌥K | A dashboard of your Claude Code and Codex skills: read every file rendered, follow links between them, edit, and create new skills. Off by default. |
 | **Keyboard Mouse** | hold Right ⌥ | Hold a key, then WASD moves the pointer, 1–6 jump to a screen panel, Space/E click. Off by default. |
 | **Nose Control** | ⌃⌥N | Experimental: move the pointer by turning your head (camera, on-device). Found too unstable to recommend. Off by default. |

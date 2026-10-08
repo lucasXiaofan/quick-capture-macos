@@ -86,13 +86,14 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
 | `nose_control.sensitivity_x`, `sensitivity_y` | 0.3–6; pointer travel per head movement (see [Nose Control](nose-control.md)) |
 | `nose_control.steadiness` | 0–1; higher removes shake but reacts slower |
 | `keyboard_mouse.activation_key` | `right_option`, `right_command` or `right_control`; the key you hold to use WASD as a mouse (see [Keyboard Mouse](keyboard-mouse.md)) |
-| `video_notes.folder` | Parent of the `quick-capture-video` folder; empty means `~/Movies` (see [Video Notes](video-notes.md)) |
+| `video_notes.folder` | Media Capture (formerly Video Notes; the key stays `video_notes`). Parent of the `quick-capture-video`, `quick-capture-selfie` and `quick-capture-audio` folders; empty means `~/Movies` (see [Media Capture](media-capture.md)) |
 | `video_notes.tags` | The tag columns of the dashboard, left to right (empty by default); manage them in the dashboard rather than by hand, since deleting there asks first |
 | `video_notes.compression` | `off`, `efficient` (720p HEVC) or `smart` (720p HEVC + blurred background); screen recordings get 15 fps HEVC unless `off`. See [Video compression](video-compression.md) |
 | `video_notes.microphone` | Record sound with the video |
 | `video_notes.volume` | Playback volume in percent, 25–800 (default 100), on top of the Mac's volume |
 | `video_notes.screen_camera_size` | Screen + camera recordings: side of the camera square in percent of the video height, 10–50 (default 25) |
 | `video_notes.screen_camera_corner` | Screen + camera recordings: `bottom_left` (default), `bottom_right`, `top_left` or `top_right` |
+| `video_notes.selfie_prompt`, `meeting_prompt` | Ask for a tag and note after each selfie / when a meeting recording stops (default `true`) |
 | `video_notes.selfie_mirror` | Save selfies mirrored, as the preview shows them (default `true`) |
 | `video_notes.meeting_system_audio` | Meeting recordings also capture the Mac's sound, i.e. the other people (default `true`; needs Screen Recording) |
 | `video_notes.meeting_compression` | `compact` (HE-AAC mono 32 kbps, ~16 MB/hour, default), `standard` (AAC mono 64 kbps) or `high` (AAC stereo 128 kbps) |
