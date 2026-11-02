@@ -9,6 +9,7 @@ struct CaptureRequest {
     var diaryExists: Bool
     var preferDiary: Bool
     var offline: Bool          // Obsidian closed / CLI unavailable → writes the diary file directly
+    var label: String? = nil   // Fixed destination shown instead of the note/diary picker (Task Log)
 }
 
 struct CaptureResult {
@@ -148,7 +149,9 @@ private struct CaptureView: View {
         let diaryLabel = "Today's diary · " + diaryName + (request.diaryExists ? "" : " (new)")
         HStack(spacing: 8) {
             Text("Save to").foregroundStyle(.secondary)
-            if let note = request.notePath {
+            if let label = request.label {
+                Label(label, systemImage: "checklist")
+            } else if let note = request.notePath {
                 Picker("", selection: $toDiary) {
                     Label(((note as NSString).lastPathComponent as NSString).deletingPathExtension
                           + (request.noteAtCursor ? " · at cursor" : " · at end"),
@@ -163,7 +166,7 @@ private struct CaptureView: View {
             Spacer()
         }
         .font(.callout)
-        if request.offline {
+        if request.offline && request.label == nil {
             Label("Obsidian is closed, so this is written straight to the diary file.", systemImage: "info.circle")
                 .font(.caption).foregroundStyle(.secondary)
         }

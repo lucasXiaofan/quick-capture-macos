@@ -4,6 +4,7 @@ enum PluginRegistry {
     static func makeAll() -> [Plugin] {
         [
             ObsidianCapturePlugin(),
+            TaskLogPlugin(),
             AIChatPlugin(),
             NoseControlPlugin(),
             KeyboardMousePlugin(),

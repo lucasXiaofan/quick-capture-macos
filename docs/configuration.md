@@ -32,6 +32,11 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
       "template": "",
       "destination_mode": "current"
     },
+    "task_log": {
+      "enabled": false,
+      "hotkeys": { "image": "", "text": "" },
+      "folder": "~/Documents/tasks/logs"
+    },
     "nose_control": {
       "enabled": false,
       "hotkeys": {
