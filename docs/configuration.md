@@ -37,6 +37,16 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
       "hotkeys": { "image": "", "text": "" },
       "folder": "~/Documents/tasks/logs"
     },
+    "read_aloud": {
+      "enabled": false,
+      "hotkeys": { "read": "", "clipboard": "", "stop": "" },
+      "python_path": "",
+      "voice": "af_heart",
+      "speed": 1,
+      "memory_limit_gb": 3,
+      "audio_limit_mb": 500,
+      "idle_minutes": 10
+    },
     "nose_control": {
       "enabled": false,
       "hotkeys": {

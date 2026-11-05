@@ -37,6 +37,7 @@ For AI Chat, install at least one CLI and run it once to sign in:
 - **AI Chat:** press ⌃⌥Space, type, and press ↩. Pick the model and working folder in the header; ⌘N starts a new chat, Esc hides it. By default it can edit files in the working folder and run sandboxed commands; switch to *Read only* or *Full access* in Settings. → [docs/ai-chat.md](docs/ai-chat.md)
 - **Obsidian Capture:** press ⌘⇧I, drag a region, add a note, and press ⌘↩. It lands at your cursor in Obsidian. Add ⌥ (⌥⇧⌘I / ⌥⇧⌘J) to send to today's diary instead. → [docs/obsidian-capture.md](docs/obsidian-capture.md)
 - **Task Log:** turn it on in Settings, choose a folder and assign the two shortcuts; a screenshot or note goes to the end of today's `YYYY-MM-DD.md` there. → [docs/task-log.md](docs/task-log.md)
+- **Read Aloud:** turn it on in Settings (needs a Python with `mlx-audio`), assign a shortcut, drag a region of text and hear it in a local Kokoro voice; the clipboard works too. → [docs/read-aloud.md](docs/read-aloud.md)
 - **Keyboard Mouse:** turn it on in Settings, then hold Right ⌥ and press W/A/S/D to move, 1–6 to jump to a screen panel, Space to click (twice = double click), E to right-click. → [docs/keyboard-mouse.md](docs/keyboard-mouse.md)
 - **Nose Control (experimental, not recommended):** turn it on in Settings, press ⌃⌥N, calibrate (centre, then your comfortable left/right/up/down limits, confirming each with ⌥↩), then move the pointer with your head. ⌥↩ left click, ⌥⇧↩ right click, ⌃⌥↩ double click, ⌥Space pause. All shortcuts are configurable. → [docs/nose-control.md](docs/nose-control.md)
 
@@ -49,6 +50,7 @@ All settings are also in a JSON file that applies live when edited. → [docs/co
 - [AI Chat](docs/ai-chat.md): models, permissions, links, keys
 - [Obsidian Capture](docs/obsidian-capture.md): setup, and where captures go
 - [Task Log](docs/task-log.md): daily log file for an agent to read
+- [Read Aloud](docs/read-aloud.md): screenshot → speech on this Mac, memory and storage limits
 - [Keyboard Mouse](docs/keyboard-mouse.md): activation key, panels, clicks
 - [Nose Control](docs/nose-control.md): calibration, sensitivity, steadiness, shortcuts
 - [Skill Manager](docs/skill-manager.md): where it looks, editing, new skills
