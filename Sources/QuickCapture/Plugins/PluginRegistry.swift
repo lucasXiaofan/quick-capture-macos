@@ -12,5 +12,6 @@ enum PluginRegistry {
             VideoNotesPlugin(),
             SkillManagerPlugin(),
         ]
+            MemoryMonitorPlugin(),
     }
 }

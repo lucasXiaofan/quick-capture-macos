@@ -9,6 +9,7 @@ A small menu-bar app that puts useful things behind global shortcuts. Each featu
 | **Media Capture** | ⌃⌥R | Record a quick video with the Mac camera (or the screen with your camera in a corner, ⌃⌥⇧R), tag it, and replay favourites with ⌃⌥V then 1–5. Also a daily selfie (⌃⌥F) and meeting recordings (⌃⌥A: microphone + the Mac's sound, transcribed on this Mac when you stop). One dashboard with Videos, Selfies and Recordings (audio next to its transcript), sorted by shared tags. Off by default. |
 | **Skill Manager** | ⌃⌥K | A dashboard of your Claude Code and Codex skills: read every file rendered, follow links between them, edit, and create new skills. Off by default. |
 | **Keyboard Mouse** | hold Right ⌥ | Hold a key, then WASD moves the pointer, 1–6 jump to a screen panel, Space/E click. Off by default. |
+| **Memory Monitor** | none | Live RAM window for local-model work: used / cached files (where mmap'd models sit) over time, a baseline to see what a model load cost, and one-click quitting of apps you can spare. Off by default. |
 | **Nose Control** | ⌃⌥N | Experimental: move the pointer by turning your head (camera, on-device). Found too unstable to recommend. Off by default. |
 
 No account and no server. AI Chat uses the Claude Code or Codex CLI you already have, with your own sign-in.
@@ -57,6 +58,7 @@ All settings are also in a JSON file that applies live when edited. → [docs/co
 - [Configuration](docs/configuration.md): `config.json` reference
 - [Troubleshooting](docs/troubleshooting.md): permissions, missing CLIs, Gatekeeper
 - [Development](docs/development.md): building, signing, tests, writing a plugin
+- [Memory Monitor](docs/memory-monitor.md): reading the bar, baseline, quitting apps
 - [Changelog](CHANGELOG.md)
 
 ## Uninstall

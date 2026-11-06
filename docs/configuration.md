@@ -126,3 +126,4 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
 | `nose_control.show_preview`, `reuse_calibration` | Show the camera preview while tracking; skip calibration when a saved one exists |
 
 Config files from version 2 and from the Python version are migrated automatically.
+| `memory_monitor.keep` | Bundle ids that Quit All never quits (see [Memory Monitor](memory-monitor.md)); default Terminal, iTerm2, Xcode, VS Code, Claude |
