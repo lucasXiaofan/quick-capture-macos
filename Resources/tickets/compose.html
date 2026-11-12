@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: tkfile:;">
+  <title>New Ticket</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="compose">
+  <header class="compose-head">
+    <span class="compose-title">New ticket</span>
+    <span id="compose-agent" class="muted"></span>
+    <span class="spacer"></span>
+    <span id="compose-pick" class="picks"></span>
+  </header>
+  <div class="compose-box">
+    <textarea id="text" autofocus spellcheck="true"
+              placeholder="A todo, a question, an idea, a habit check-in, a bug…"></textarea>
+    <div id="suggest" hidden></div>
+    <div id="staged" class="staged"></div>
+    <div class="compose-tools">
+      <button id="shot" class="tool" title="Select part of the screen to attach">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1.2l.9-1.5h4.8l.9 1.5h1.2A1.5 1.5 0 0 1 14 5.5v6A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/><circle cx="8" cy="8.5" r="2.3"/></svg>
+        <span>Screenshot</span>
+      </button>
+      <button id="file" class="tool" title="Attach files (or paste / drop them)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 7.5 8 12.5a3 3 0 0 1-4.3-4.2l5.2-5.2a2 2 0 0 1 2.8 2.8L6.6 11a1 1 0 0 1-1.4-1.4L9.8 5"/></svg>
+        <span>File</span>
+      </button>
+      <span class="sep"></span>
+      <div id="hints" class="hints" title="Click to tag, or type # in the text"></div>
+    </div>
+  </div>
+  <footer class="compose-foot">
+    <button id="open" class="tool" title="Open the Tickets window">Open inbox</button>
+    <span class="tip">Type # to tag · paste or drop images · Esc hides and keeps the draft</span>
+    <button id="save" class="ghost" title="Save with your hashtags only, without running the agent (⌃↩)">Save <kbd>⌃↩</kbd></button>
+    <button id="append" class="ghost" title="The agent adds this to the most relevant existing ticket, e.g. a check-in to its tracking ticket (⇧⌘↩)">Append <kbd>⇧⌘↩</kbd></button>
+    <button id="send" class="primary" title="New ticket; the agent classifies it (⌘↩)">Send <kbd>⌘↩</kbd></button>
+  </footer>
+
+  <script src="logic.js"></script>
+  <script src="compose.js"></script>
+</body>
+</html>

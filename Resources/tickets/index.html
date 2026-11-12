@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; font-src 'self' file: data:; img-src 'self' file: data: https: tkfile:;">
+  <title>Tickets</title>
+  <!-- Markdown, math and code highlighting are shared with AI Chat. -->
+  <link rel="stylesheet" href="../ai_chat/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../ai_chat/vendor/hljs-light.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="../ai_chat/vendor/hljs-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="app">
+  <aside id="nav"></aside>
+  <div class="resizer" data-resize="nav" title="Drag to resize · double-click to reset"></div>
+  <main id="main"></main>
+  <div id="toast" role="status"></div>
+
+  <script src="../ai_chat/vendor/marked.umd.js"></script>
+  <script src="../ai_chat/vendor/katex/katex.min.js"></script>
+  <script src="../ai_chat/vendor/purify.min.js"></script>
+  <script src="../ai_chat/vendor/highlight.min.js"></script>
+  <script src="../ai_chat/render.js"></script>
+  <script src="../ai_chat/vendor/mermaid.min.js"></script>
+  <script src="diagrams.js"></script>
+  <script src="logic.js"></script>
+  <script src="canvas.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
