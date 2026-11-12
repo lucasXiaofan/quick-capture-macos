@@ -15,14 +15,14 @@ Three kinds of capture, each one shortcut away, all tagged and found in one dash
 | Open dashboard | (none) | First item in the menu bar section, and **Open Dashboard** at the top of Settings → Media Capture. **Plugins ▸ Media Capture ▸ Selfies… / Meeting Recordings & Transcripts…** open it on those tabs |
 | Record | ⌃⌥R | Pressing it again while recording pauses / resumes |
 | Record screen + camera | ⌃⌥⇧R | See [Screen + camera](#screen--camera). Pressing it again pauses / resumes |
-| Pause / resume | ⌃⌥P | In the menu bar only while recording |
-| Stop | ⌃⌥S | In the menu bar only while recording. Then a small window asks what the video is about |
-| Discard | ⌃⌥X | While recording: pauses and asks, then throws the recording away (or resumes if you keep it). Also works while the tag prompt of a just-finished recording is open |
+| Pause / resume | ⌃⌥P | Any recording: video, screen + camera or meeting audio. In the menu bar only while recording |
+| Stop… | Esc | While a video, screen or meeting recording runs: pauses it and asks **Save** (↩), **Discard** (D) or **Keep going** (Esc). Esc is only taken while something records |
+| Stop | ⌃⌥S | **One Stop for every kind of recording** (video, screen + camera, meeting audio). In the menu bar only while recording. Then a small window asks what it's about; meetings are then compressed and transcribed |
+| Discard | ⌃⌥X | While any recording runs: pauses and asks, then throws the recording away (or resumes if you keep it). Also works while the tag prompt of a just-finished recording is open |
 | Quick play | ⌃⌥V | Then press **1**–**5**; the video opens in a small window and starts playing after half a second (Esc closes) |
 | Play slot 1–5 directly | (none) | Optional: one shortcut per slot, no list in between (not in the menu bar) |
 | Selfie | ⌃⌥F | Shows the camera; press again (or Space) to take the photo. See [Selfie](#selfie) |
 | Record meeting audio | ⌃⌥A | Microphone + the Mac's sound. Pressing it again pauses / resumes. See [Meeting audio](#meeting-audio) |
-| Stop meeting recording | ⌃⌥⇧A | Then it's compressed and transcribed |
 
 While recording, a small preview with a timer sits at the bottom of the screen.
 
@@ -30,7 +30,7 @@ While recording, a small preview with a timer sits at the bottom of the screen.
 
 ⌃⌥⇧R records the display the active window is on at 720p (H.264, 30 fps, as wide as the display's shape: 1152×720 on a 16:10 Mac) with your camera as a rounded square in a corner. Sound is the Mac's own audio plus the microphone (if on), mixed into one track when you stop. The live preview sits exactly where the square will be in the video; Quick Capture's own windows (preview, toasts, prompts) are left out of the recording.
 
-Settings → Media Capture → **Screen + camera**: **Camera size** (10–50% of the video height, default 25%) and **Camera corner** (default bottom left).
+Settings → Media Capture → **Screen + camera** shows a preview of the recording's frame (your main display's shape and wallpaper) with the camera square where the next recording puts it: drag the square to another corner, or drag its round handle to resize it; tick **Show my camera** to see yourself in it. The same values are also there as **Camera size** (10–50% of the video height, default 25%) and **Camera corner** (default bottom left), plus and **Mac sound** / **Your voice** (0–300%, defaults 70% / 100%): how loud each is in the saved video. The Mac's sound is usually far louder than a voice into the built-in microphone, so lower Mac sound or raise Your voice if viewers can't hear you. The two are mixed at these volumes when you stop (above 100% goes through a soft limiter so it rounds off instead of clipping); change them before recording, they don't alter videos already saved.
 
 They're recorded at high quality, then compressed in the background like camera videos but without the blur: HEVC at 15 fps, which keeps screen text sharp, about 4–6.5 MB per minute. Files are named `Screen yyyy-MM-dd HH.mm.ss.mov`.
 
@@ -44,7 +44,7 @@ Photos are JPEGs named `Selfie yyyy-MM-dd HH.mm.ss.jpg` in `<folder>/quick-captu
 
 ## Meeting audio
 
-For meetings of half an hour, an hour or more. ⌃⌥A starts recording **your microphone and the Mac's own sound** (the other people in Zoom, Teams, Meet, a video…); pressing it again pauses and resumes, and ⌃⌥⇧A stops. A small `REC 12:34` pill sits at the top right while recording; it's excluded from screen sharing, so the meeting doesn't see it (turn it off with `video_notes.meeting_indicator`).
+For meetings of half an hour, an hour or more. ⌃⌥A starts recording **your microphone and the Mac's own sound** (the other people in Zoom, Teams, Meet, a video…); pressing it again pauses and resumes, and ⌃⌥S (the same Stop as videos) or Esc stops. A small `REC 12:34` pill sits at the top right while recording; it's excluded from screen sharing, so the meeting doesn't see it (turn it off with `video_notes.meeting_indicator`).
 
 The Mac's sound needs **Screen Recording** permission (ScreenCaptureKit, the same permission as screen + camera). Without it, only the microphone is recorded and the start message says so. Turn the Mac's sound off with **Also record the Mac's sound**.
 
@@ -108,7 +108,7 @@ Tags are columns, shared by Videos, Selfies and Recordings, and their order is t
 
 ## Compression
 
-After each recording the video is shrunk in the background: camera videos to 720p HEVC (default **Smart** also blurs the background), about 4 MB per minute; screen recordings to 15 fps HEVC. The original is replaced only if the result is complete and smaller. Change the mode in Settings; **Compress Again** on a card or **⋯ → Compress All Videos** in the dashboard brings older videos to the current targets. See [video-compression.md](video-compression.md) for the algorithm comparison.
+After each recording the video is shrunk in the background: camera videos to 720p HEVC (default **Smart** also drops to 15 fps, like screen recordings), about 4 MB per minute; screen recordings to 15 fps HEVC. The original is replaced only if the result is complete and smaller. Change the mode in Settings; **Compress Again** on a card or **⋯ → Compress All Videos** in the dashboard brings older videos to the current targets. See [video-compression.md](video-compression.md) for the algorithm comparison.
 
 ## Where files go
 

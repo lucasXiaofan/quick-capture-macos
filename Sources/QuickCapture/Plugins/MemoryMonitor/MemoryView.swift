@@ -136,6 +136,10 @@ struct MemoryView: View {
                     Text(p.name)
                     Text("pid \(p.id)").font(.caption).foregroundStyle(.secondary)
                     Spacer()
+                    if p.mapped > 200_000_000 {
+                        Text("+ \(Self.gb(p.mapped)) mapped files (model weights, in Cached files)")
+                            .font(.caption).foregroundStyle(.teal)
+                    }
                     Text(Self.gb(p.footprint)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
                     Button("Stop") { plugin.terminate(p) }
                 }

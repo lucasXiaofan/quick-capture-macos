@@ -261,7 +261,7 @@ private struct CaptureButton: View {
         let (title, symbol, actionID, stop): (String, String, String, Bool) = switch kind {
         case .video: recorder.isRecording ? ("Stop", "stop.fill", "stop", true) : ("Record", "record.circle", "record", false)
         case .selfie: ("Take Selfie", "camera", "selfie", false)
-        case .audio: meeting.isRecording ? ("Stop", "stop.fill", "meeting_stop", true) : ("Record Meeting", "waveform.circle", "meeting", false)
+        case .audio: meeting.isRecording ? ("Stop", "stop.fill", "stop", true) : ("Record Meeting", "waveform.circle", "meeting", false)
         }
         Button { plugin.action(actionID).map(plugin.perform) } label: { Label(title, systemImage: symbol) }
             .buttonStyle(.borderedProminent).tint(kind == .selfie ? .accentColor : .red)

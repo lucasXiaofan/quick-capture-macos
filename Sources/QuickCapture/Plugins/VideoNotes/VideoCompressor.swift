@@ -1,12 +1,12 @@
 import AVFoundation
 import CoreImage
-import Vision
 
 /// Shrinks a recording to a fixed, measured target (see `target(mode:screen:)` and docs/video-compression.md).
 ///
 /// Video is ~95% of a recording's size, so that's where the savings are:
 /// - Camera videos go to 720p HEVC (a 1080p face gains almost nothing from the extra pixels). "smart"
-///   also blurs everything except the person (Vision segmentation), so the bits go to the face.
+///   also halves the frame rate to 15 fps, like screen recordings: each frame gets twice the bits, so the
+///   picture stays clean at a small size. (It used to blur the background instead; that looked bad.)
 /// - Screen + camera videos go to HEVC at 15 fps: a screen is mostly still, and at the same bit rate
 ///   each frame gets twice the bits, which keeps text sharp where 30 fps smears it.
 /// - Audio is re-encoded as AAC at 64 kbit/s mono (voice) or 96 kbit/s stereo (screen sound) — inaudible
@@ -28,7 +28,6 @@ enum VideoCompressor {
         /// nil keeps the source frame rate.
         var fps: Double?
         var bitRate: Int
-        var blur: Bool
         var audioChannels: Int
         var audioBitRate: Int
     }
@@ -36,10 +35,11 @@ enum VideoCompressor {
     static func target(mode: Mode, screen: Bool) -> Target {
         if screen {
             // Screen + camera: HEVC 15 fps 0.8 Mbit/s ≈ 6.5 MB/min with sound; text measured as sharp as 30 fps at 1.2.
-            return Target(maxHeight: 720, fps: 15, bitRate: 800_000, blur: false, audioChannels: 2, audioBitRate: 96_000)
+            return Target(maxHeight: 720, fps: 15, bitRate: 800_000, audioChannels: 2, audioBitRate: 96_000)
         }
-        // Camera: 720p HEVC ≈ 4 MB/min with sound (SSIM 0.99 vs. the 1080p original); voice in mono AAC.
-        return Target(maxHeight: 720, fps: nil, bitRate: mode == .smart ? 500_000 : 700_000, blur: mode == .smart,
+        // Camera: 720p HEVC; voice in mono AAC. Smart: 15 fps at 0.5 Mbit/s ≈ 4 MB/min with sound (more bits per
+        // frame than efficient's 30 fps at 0.7 Mbit/s ≈ 5.5 MB/min).
+        return Target(maxHeight: 720, fps: mode == .smart ? 15 : nil, bitRate: mode == .smart ? 500_000 : 700_000,
                       audioChannels: 1, audioBitRate: 64_000)
     }
 
@@ -66,8 +66,6 @@ private final class Job: @unchecked Sendable {
     private let duration: Double
     private let progress: @Sendable (Double) -> Void
     private let context = CIContext()
-    private let segmentation = VNGeneratePersonSegmentationRequest()
-    private let sequence = VNSequenceRequestHandler()
     private var nextFrame = -Double.infinity
 
     init(source: URL, destination: URL, target: VideoCompressor.Target, progress: @escaping @Sendable (Double) -> Void) async throws {
@@ -128,8 +126,6 @@ private final class Job: @unchecked Sendable {
             audioOut = out
             audioIn = input
         }
-        segmentation.qualityLevel = .balanced
-        segmentation.outputPixelFormat = kCVPixelFormatType_OneComponent8
     }
 
     func run() async throws {
@@ -165,18 +161,13 @@ private final class Job: @unchecked Sendable {
         if writer.status != .completed { throw writer.error ?? AppError("Writing the compressed video failed.") }
     }
 
-    /// Blurs the background (smart) and scales down to the target size; the source buffer when neither applies.
+    /// Scales down to the target size; the source buffer when it already fits.
     private func process(_ pixels: CVPixelBuffer) -> CVPixelBuffer? {
-        let scaled = outputSize != sourceSize
-        guard target.blur || scaled else { return pixels }
-        var image = CIImage(cvPixelBuffer: pixels)
-        if target.blur, let blurred = blurBackground(image, pixels) { image = blurred }
-        if scaled {
-            let sy = outputSize.height / sourceSize.height, sx = outputSize.width / sourceSize.width
-            image = image.applyingFilter("CILanczosScaleTransform", parameters: [
-                kCIInputScaleKey: sy, kCIInputAspectRatioKey: sx / sy,
-            ])
-        }
+        guard outputSize != sourceSize else { return pixels }
+        let sy = outputSize.height / sourceSize.height, sx = outputSize.width / sourceSize.width
+        let image = CIImage(cvPixelBuffer: pixels).applyingFilter("CILanczosScaleTransform", parameters: [
+            kCIInputScaleKey: sy, kCIInputAspectRatioKey: sx / sy,
+        ])
         guard let pool = adaptor.pixelBufferPool else { return nil }
         var out: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess, let out else { return nil }
@@ -196,21 +187,5 @@ private final class Job: @unchecked Sendable {
                 }
             }
         }
-    }
-
-    /// Keeps the person sharp and blurs the rest.
-    private func blurBackground(_ image: CIImage, _ pixels: CVPixelBuffer) -> CIImage? {
-        guard (try? sequence.perform([segmentation], on: pixels)) != nil,
-              let mask = segmentation.results?.first?.pixelBuffer else { return nil }
-        let extent = image.extent
-        var maskImage = CIImage(cvPixelBuffer: mask)
-        maskImage = maskImage.transformed(by: CGAffineTransform(scaleX: extent.width / maskImage.extent.width,
-                                                                y: extent.height / maskImage.extent.height))
-        // A slightly soft mask edge hides the cut-out line.
-        maskImage = maskImage.clampedToExtent().applyingGaussianBlur(sigma: 3).cropped(to: extent)
-        let blurred = image.clampedToExtent().applyingGaussianBlur(sigma: Double(extent.height) / 45).cropped(to: extent)
-        return CIFilter(name: "CIBlendWithMask", parameters: [
-            kCIInputImageKey: image, kCIInputBackgroundImageKey: blurred, kCIInputMaskImageKey: maskImage,
-        ])?.outputImage
     }
 }

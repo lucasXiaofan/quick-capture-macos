@@ -26,6 +26,7 @@ struct Shortcut: Hashable {
             ("<space>", kVK_Space, "Space"), ("<tab>", kVK_Tab, "⇥"), ("<enter>", kVK_Return, "↩"),
             ("<left>", kVK_LeftArrow, "←"), ("<right>", kVK_RightArrow, "→"),
             ("<up>", kVK_UpArrow, "↑"), ("<down>", kVK_DownArrow, "↓"),
+            ("<esc>", kVK_Escape, "Esc"),
         ]
         let fkeys = [kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10,
                      kVK_F11, kVK_F12, kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F18, kVK_F19]
@@ -83,6 +84,15 @@ struct Shortcut: Hashable {
     /// ⌘ or ⌘⇧ plus a printable key: the family most apps use for their own menu commands.
     var overlapsAppCommands: Bool { command && !option && !control && menuKeyEquivalent != nil }
 
+    var modifierFlags: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if command { flags.insert(.command) }
+        if shift { flags.insert(.shift) }
+        if option { flags.insert(.option) }
+        if control { flags.insert(.control) }
+        return flags
+    }
+
     var carbonModifiers: UInt32 {
         UInt32((command ? cmdKey : 0) | (shift ? shiftKey : 0) | (option ? optionKey : 0) | (control ? controlKey : 0))
     }
@@ -90,12 +100,7 @@ struct Shortcut: Hashable {
     /// For showing the shortcut next to menu items (display only).
     var menuKeyEquivalent: (String, NSEvent.ModifierFlags)? {
         guard let name = Shortcut.keys.first(where: { $0.code == keyCode })?.name, name.count == 1 else { return nil }
-        var flags: NSEvent.ModifierFlags = []
-        if command { flags.insert(.command) }
-        if shift { flags.insert(.shift) }
-        if option { flags.insert(.option) }
-        if control { flags.insert(.control) }
-        return (name, flags)
+        return (name, modifierFlags)
     }
 }
 

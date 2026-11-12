@@ -54,15 +54,14 @@ final class ChatWindowController: NSObject, NSWindowDelegate, WKNavigationDelega
     }
 
     func show() {
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        AppWindows.show(window)
         send(["type": "focus"])
     }
 
     func hide() {
         window.orderOut(nil)
-        // Give focus back to the previous app when nothing else of ours is on screen.
-        if !NSApp.windows.contains(where: { $0.isVisible && $0.level == .normal && $0 !== window }) { NSApp.hide(nil) }
+        // Focus goes back to the previous app; other Quick Capture windows stay on screen.
+        AppWindows.hidden(window)
     }
 
     func newChat() {
@@ -74,6 +73,7 @@ final class ChatWindowController: NSObject, NSWindowDelegate, WKNavigationDelega
     func close() {
         session.reset()
         window.orderOut(nil)
+        AppWindows.hidden(window)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -236,6 +236,9 @@ final class ChatWindowController: NSObject, NSWindowDelegate, WKNavigationDelega
 /// Accepts files dragged from Finder (the page can't see their paths).
 final class DropWebView: WKWebView {
     var onDropFiles: (([URL]) -> Void)?
+
+    /// A click on an inactive window works at once instead of only activating it.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     private func fileURLs(_ info: NSDraggingInfo) -> [URL] {
         (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []

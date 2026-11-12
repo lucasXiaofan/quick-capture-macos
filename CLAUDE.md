@@ -17,6 +17,7 @@ Build and test:
 ```bash
 swift build
 node tests/bridge.test.cjs && node tests/render.test.cjs && node tests/skills.test.cjs
+scripts/tickets-test.sh                 # Tickets: Markdown round trip + page logic
 scripts/chat-smoke.sh claude haiku      # real CLI round trip (uses quota)
 scripts/build.sh --install              # bundle, sign, install to /Applications, relaunch
 ```

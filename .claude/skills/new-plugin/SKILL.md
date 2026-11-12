@@ -177,7 +177,7 @@ private struct ExampleSettingsView: View {
   Use `menuAlerts()` only for something the user should act on now.
 - **Plain keys:** an action that is only active temporarily may set `allowsBareKey: true` (with `isAvailable`), so the user can bind e.g. `1` — never for an always-registered action.
 - **Shortcuts:** `defaultShortcut` needs ⌘, ⌥ or ⌃ (function keys excepted) and must not clash with
-  shipped defaults — currently ⌘⇧I, ⌘⇧J, ⌥⇧⌘I, ⌥⇧⌘J (Obsidian Capture), ⌃⌥Space (AI Chat), ⌃⌥K (Skill Manager), Media Capture's (⌃⌥R, ⌃⌥⇧R, ⌃⌥P, ⌃⌥S, ⌃⌥X, ⌃⌥V, ⌃⌥F, ⌃⌥A, ⌃⌥⇧A), ⌃⌥, (Open Settings), and Nose Control's (see docs/nose-control.md). Settings → Shortcuts shows them all.
+  shipped defaults — currently ⌃⌥W (Radial Wheel), ⌘⇧I, ⌘⇧J, ⌥⇧⌘I, ⌥⇧⌘J (Obsidian Capture), ⌃⌥Space (AI Chat), ⌃⌥K (Skill Manager), ⌃⌥E, ⌃⌥⇧E (Tickets), Media Capture's (Esc while recording, ⌃⌥R, ⌃⌥⇧R, ⌃⌥P, ⌃⌥S, ⌃⌥X, ⌃⌥V, ⌃⌥F, ⌃⌥A), ⌃⌥, (Open Settings), and Nose Control's (see docs/nose-control.md). Settings → Shortcuts shows them all.
   Prefer `nil` (user assigns one) over grabbing a combination other apps use; Carbon hotkeys
   swallow the key press system-wide.
 - **Main thread:** `perform` runs on the main actor. Do slow work in `Task {}` / `Shell.run` /

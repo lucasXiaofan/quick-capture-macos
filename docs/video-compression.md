@@ -6,12 +6,14 @@ Video is about 95% of a recording's size (measured: 2.1–2.75 Mbit/s of picture
 
 | Video | Picture | Sound | Size |
 |---|---|---|---|
-| Camera, `smart` (default) | 720p HEVC, ~0.5 Mbit/s, background blurred (Apple Vision person segmentation) | AAC mono 64 kbit/s | ~4 MB/min |
-| Camera, `efficient` | 720p HEVC, ~0.7 Mbit/s, no blur | AAC mono 64 kbit/s | ~5.5 MB/min |
+| Camera, `smart` (default) | 720p HEVC at **15 fps**, ~0.5 Mbit/s (like screen recordings) | AAC mono 64 kbit/s | ~4 MB/min |
+| Camera, `efficient` | 720p HEVC at the recorded frame rate, ~0.7 Mbit/s | AAC mono 64 kbit/s | ~5.5 MB/min |
 | Screen + camera (`smart` or `efficient`) | HEVC at **15 fps**, ~0.8 Mbit/s at most, same size as recorded (720 high) | AAC stereo 96 kbit/s | ~4–6.5 MB/min |
 | `off` | as recorded | as recorded | camera ~17 MB/min, screen ~22 MB/min |
 
 The result replaces the original only if it is complete (same duration) **and** smaller. `compression_version` in `index.json` records which target a video was compressed with; when the targets change, cards offer **Compress Again** and the dashboard's **⋯ → Compress All Videos** recompresses everything older, one at a time.
+
+Until 2026-11, `smart` camera videos kept 30 fps and blurred the background instead (Apple Vision person segmentation) so the bits went to the face; the cut-out looked bad, so it now drops to 15 fps at the same bit rate, which gives every frame more bits and nothing is blurred. Videos already compressed with the blur stay as they are (the original is gone).
 
 Why 15 fps for screen recordings: a screen is mostly still. At the same bit rate each frame gets twice the bits, which keeps text sharp where 30 fps smears it (see below). Your face in the corner moves a bit less smoothly; for talking that's fine.
 

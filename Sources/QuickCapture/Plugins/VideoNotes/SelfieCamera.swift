@@ -98,6 +98,8 @@ final class SelfieCamera: NSObject, ObservableObject, AVCapturePhotoCaptureDeleg
         p.level = .floating
         p.isReleasedWhenClosed = false
         p.isMovableByWindowBackground = true
+        // Panels hide when the app loses focus; the camera would keep running behind a hidden window.
+        p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let preview = SelfiePreviewView(session: session, size: size, mirror: mirror)
         let overlay = NSHostingView(rootView: SelfieOverlay(camera: self))
@@ -156,6 +158,21 @@ private struct SelfieOverlay: View {
             }
             Color.white.opacity(camera.flash ? 0.85 : 0)
             VStack {
+                HStack {
+                    Spacer()
+                    if camera.captured == nil {
+                        Button { camera.close() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(.black.opacity(0.55), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Close the camera (Esc)")
+                        .padding(10)
+                    }
+                }
                 Spacer()
                 Text(camera.captured == nil ? "Press the shortcut again or Space to take the photo · Esc to cancel" : "Saved")
                     .font(.system(size: 12, weight: .medium))

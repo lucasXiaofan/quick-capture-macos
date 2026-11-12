@@ -3,7 +3,7 @@
 
   stdin  {"cmd":"speak","id":"…","text":"…","voice":"af_heart","speed":1.0}   (a new speak cancels the old one)
          {"cmd":"stop"} | {"cmd":"stats"} | {"cmd":"quit"}
-  stdout {"event":"ready",…} {"event":"chunk","id","path","index","audio_s","gen_s"} {"event":"done",…}
+  stdout {"event":"ready",…} {"event":"start","id","chunks":[…]} {"event":"chunk","id","path","index","audio_s","gen_s"} {"event":"done",…}
          {"event":"stats",…} {"event":"error","message"}
 
 Speed: chunks grow 80 -> 200 -> 360 chars (short first chunk = fast first audio; see SIZES). Kokoro has no batch dimension, so batching is along time: fewer, longer calls (each call has a
@@ -179,6 +179,7 @@ def serve(a):
         final = audio_dir / f"{key}.wav"
         if final.exists():                                  # same text before: no model call at all
             os.utime(final)
+            emit(event="start", id=jid, chunks=[text])
             emit(event="chunk", id=jid, index=0, path=str(final), audio_s=None, gen_s=0, cached=True)
             emit(event="done", id=jid, path=str(final), cached=True, ttfa_s=0, **stats())
             return
@@ -188,7 +189,9 @@ def serve(a):
         parts_dir.mkdir(exist_ok=True)
         t_start, audio, ttfa = time.perf_counter(), [], None
         eng.mx.reset_peak_memory()
-        for i, c in enumerate(chunks(text)):
+        plan = chunks(text)
+        emit(event="start", id=jid, chunks=plan)            # the panel shows the text as it will be spoken
+        for i, c in enumerate(plan):
             if cancel.is_set():
                 break
             t0 = time.perf_counter()

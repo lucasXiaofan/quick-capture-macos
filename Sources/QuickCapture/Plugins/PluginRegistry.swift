@@ -3,15 +3,19 @@
 enum PluginRegistry {
     static func makeAll() -> [Plugin] {
         [
+            RadialWheelPlugin(),
             ObsidianCapturePlugin(),
             TaskLogPlugin(),
             ReadAloudPlugin(),
+            BrakePlugin(),
             AIChatPlugin(),
             NoseControlPlugin(),
             KeyboardMousePlugin(),
             VideoNotesPlugin(),
+            TicketsPlugin(),
             SkillManagerPlugin(),
-        ]
             MemoryMonitorPlugin(),
+            StorageManagerPlugin(),
+        ]
     }
 }

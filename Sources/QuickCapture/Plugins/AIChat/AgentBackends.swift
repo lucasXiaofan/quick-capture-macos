@@ -95,7 +95,7 @@ final class AgentDetector: ObservableObject {
     }
 
     /// Codex keeps the list of models the account can use in ~/.codex/models_cache.json.
-    private static func codexCachedModels() -> [ChatModel] {
+    static func codexCachedModels() -> [ChatModel] {
         let home = ProcessInfo.processInfo.environment["CODEX_HOME"]
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex").path
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: home).appendingPathComponent("models_cache.json")),

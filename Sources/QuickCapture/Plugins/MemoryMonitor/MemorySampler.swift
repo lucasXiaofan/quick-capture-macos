@@ -34,6 +34,8 @@ struct ProcRow: Identifiable {
     let id: pid_t
     let name: String
     let footprint: Double
+    /// Resident file-backed pages beyond the footprint (approx.): mmap'd model weights that show up as "cached files".
+    let mapped: Double
 }
 
 /// Reads memory every second while the window is open and keeps the last 10 minutes.
@@ -99,12 +101,12 @@ final class MemorySampler: ObservableObject {
     // MARK: Processes
 
     /// Footprint = what Activity Monitor's Memory column shows (dirty + compressed + Metal), per process of this user.
-    private static func footprint(_ pid: pid_t) -> Double? {
+    private static func footprint(_ pid: pid_t) -> (footprint: Double, resident: Double)? {
         var info = rusage_info_v2()
         let ok = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V2, $0) }
         }
-        return ok == 0 ? Double(info.ri_phys_footprint) : nil
+        return ok == 0 ? (Double(info.ri_phys_footprint), Double(info.ri_resident_size)) : nil
     }
 
     private static func path(_ pid: pid_t) -> String {
@@ -128,12 +130,12 @@ final class MemorySampler: ObservableObject {
         let me = ProcessInfo.processInfo.processIdentifier
 
         for pid in list {
-            guard let fp = Self.footprint(pid) else { continue }
+            guard let (fp, resident) = Self.footprint(pid) else { continue }
             let p = Self.path(pid)
             if let owner = prefixes.first(where: { p.hasPrefix($0.1) })?.0 {
                 perApp[owner.processIdentifier, default: 0] += fp
-            } else if pid != me, fp > 50_000_000, !p.hasPrefix("/System/"), !p.hasPrefix("/usr/libexec/"), !p.hasPrefix("/usr/sbin/") {
-                loose.append(ProcRow(id: pid, name: (p as NSString).lastPathComponent, footprint: fp))
+            } else if pid != me, max(fp, resident) > 50_000_000, !p.hasPrefix("/System/"), !p.hasPrefix("/usr/libexec/"), !p.hasPrefix("/usr/sbin/") {
+                loose.append(ProcRow(id: pid, name: (p as NSString).lastPathComponent, footprint: fp, mapped: max(0, resident - fp)))
             }
         }
         apps = guiApps.map {

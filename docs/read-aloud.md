@@ -7,7 +7,17 @@ Nothing leaves the Mac.
 |---|---|---|
 | Read Screenshot Aloud (`read`) | none | Select a region; its text is read aloud |
 | Read Clipboard Aloud (`clipboard`) | none | Reads the text on the clipboard |
+| Pause / Resume Reading (`pause`) | none | Pauses or resumes playback (shown in the menu while reading) |
 | Stop Reading (`stop`) | none | Stops playback and generation |
+
+## The reading panel
+
+Every reading opens a small floating panel (it doesn't take focus from the app you're in; drag it by its background):
+the recognized text, split the way it is spoken, with finished parts dimmed and the words already said in the accent
+color; a progress bar with elapsed / total time (the total is an estimate until the last chunk is generated);
+**Pause / Resume** and **Stop**, and **✕** to close. It says what is happening (Recognizing text…, Preparing voice…,
+Generating…, Reading, Paused, Done) and shows problems (no text found, no Python, engine stopped or over its memory
+limit) instead of failing silently. After **Done** it offers **Replay** and closes itself after 8 s.
 
 A new reading replaces the one playing. The plugin's submenu has **Replay Last Reading** and **Open Read Aloud Folder**.
 

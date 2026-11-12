@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import Combine
 import SwiftUI
 
 struct VideoNotesSettings: PluginSettings {
@@ -8,13 +9,17 @@ struct VideoNotesSettings: PluginSettings {
     /// Dashboard columns, left to right. Empty by default: add your own from the dashboard.
     var tags: [String] = []
     var microphone = true
-    /// "off", "efficient" (HEVC) or "smart" (HEVC + blurred background); see VideoCompressor.
+    /// "off", "efficient" (720p HEVC) or "smart" (720p HEVC at 15 fps); see VideoCompressor.
     var compression = VideoCompressor.Mode.smart.rawValue
     /// Playback volume in percent, on top of the system volume. Above 100 boosts quiet recordings.
     var volume = 100
     /// Screen + camera recordings: the camera square's side in percent of the video height, and its corner.
     var screenCameraSize = 25
     var screenCameraCorner = ScreenCamCapture.Corner.bottomLeft.rawValue
+    /// Screen + camera recordings: volume of the Mac's sound and of your voice in the saved video, in percent.
+    /// The Mac's sound is usually much louder than a voice, hence 70 / 100.
+    var screenSystemVolume = 70
+    var screenMicVolume = 100
 
     /// Selfies are saved the way the preview shows them (mirrored, like looking in a mirror).
     var selfieMirror = true
@@ -39,10 +44,12 @@ struct VideoNotesSettings: PluginSettings {
 
     static let volumeRange = 25...800
     static let screenCameraSizeRange = 10...50
+    static let screenVolumeRange = 0...300
 
     enum CodingKeys: String, CodingKey {
         case folder, tags, microphone, compression, volume
         case screenCameraSize = "screen_camera_size", screenCameraCorner = "screen_camera_corner"
+        case screenSystemVolume = "screen_system_volume", screenMicVolume = "screen_mic_volume"
         case selfieMirror = "selfie_mirror"
         case meetingSystemAudio = "meeting_system_audio", meetingCompression = "meeting_compression"
         case meetingIndicator = "meeting_indicator"
@@ -69,14 +76,17 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         PluginAction(id: "record", title: "Record (press again to pause)", symbol: "record.circle", defaultShortcut: "<ctrl>+<alt>+r"),
         PluginAction(id: "record_screen", title: "Record Screen + Camera (press again to pause)", symbol: "pip",
                      defaultShortcut: "<ctrl>+<alt>+<shift>+r"),
+        // Pause, Stop and Discard act on whatever is recording: a video, a screen recording or meeting audio.
         PluginAction(id: "pause", title: "Pause / Resume Recording", symbol: "pause.circle", defaultShortcut: "<ctrl>+<alt>+p"),
         PluginAction(id: "stop", title: "Stop Recording", symbol: "stop.circle", defaultShortcut: "<ctrl>+<alt>+s"),
+        // Only registered while something records, so Esc reaches other apps the rest of the time.
+        PluginAction(id: "stop_prompt", title: "Stop… (Save or Discard)", symbol: "stop.circle", defaultShortcut: "<esc>",
+                     allowsBareKey: true),
         PluginAction(id: "discard", title: "Discard Recording…", symbol: "trash", defaultShortcut: "<ctrl>+<alt>+x"),
         PluginAction(id: "quick_play", title: "Quick Play (then 1–5)", symbol: "play.circle", defaultShortcut: "<ctrl>+<alt>+v"),
         PluginAction(id: "selfie", title: "Selfie (press again to take it)", symbol: "camera", defaultShortcut: "<ctrl>+<alt>+f"),
         PluginAction(id: "meeting", title: "Record Meeting Audio (press again to pause)", symbol: "waveform.circle",
                      defaultShortcut: "<ctrl>+<alt>+a"),
-        PluginAction(id: "meeting_stop", title: "Stop Meeting Recording", symbol: "stop.circle", defaultShortcut: "<ctrl>+<alt>+<shift>+a"),
     ] + (1...VideoStore.slotCount).map {
         PluginAction(id: "play_\($0)", title: "Play Quick Slot \($0) Directly", symbol: "\($0).circle", defaultShortcut: nil)
     }
@@ -106,6 +116,10 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     private var discardWhenFinished = false
     /// The just-recorded video or selfie whose tag prompt is open (the discard shortcut applies to it).
     private var freshFile: (kind: MediaKind, file: String)?
+    /// Set when the user discards a meeting from the stop prompt: its partial file goes to the Trash once complete.
+    private var discardMeetingWhenFinished = false
+    private var stopPanel: OverlayPanel?
+    private var observers: Set<AnyCancellable> = []
 
     var settings: VideoNotesSettings { state.settings(VideoNotesSettings.self, for: id) }
 
@@ -157,6 +171,11 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         guard VideoNotesSettings.screenCameraSizeRange.contains(s.screenCameraSize) else {
             throw AppError("video_notes.screen_camera_size must be between \(VideoNotesSettings.screenCameraSizeRange.lowerBound) and \(VideoNotesSettings.screenCameraSizeRange.upperBound) (percent of the video height).")
         }
+        for (key, value) in [("screen_system_volume", s.screenSystemVolume), ("screen_mic_volume", s.screenMicVolume)] {
+            guard VideoNotesSettings.screenVolumeRange.contains(value) else {
+                throw AppError("video_notes.\(key) must be between \(VideoNotesSettings.screenVolumeRange.lowerBound) and \(VideoNotesSettings.screenVolumeRange.upperBound) (percent).")
+            }
+        }
         guard ScreenCamCapture.Corner(rawValue: s.screenCameraCorner) != nil else {
             throw AppError("video_notes.screen_camera_corner must be one of: \(ScreenCamCapture.Corner.allCases.map(\.rawValue).joined(separator: ", ")).")
         }
@@ -177,18 +196,21 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
         case "record_screen":
             if recorder.isRecording { recorder.togglePause() } else { startRecording(screen: true) }
         case "pause":
-            if recorder.isRecording { recorder.togglePause() } else { Toast.show("Not recording", symbol: "video.slash", isError: true) }
+            if recorder.isRecording { recorder.togglePause() }
+            else if meeting.isRecording { meeting.togglePause() }
+            else { Toast.show("Not recording", symbol: "video.slash", isError: true) }
+        case "stop_prompt": showStopPrompt()
         case "stop":
-            if recorder.isRecording { recorder.stop() } else { Toast.show("Not recording", symbol: "video.slash", isError: true) }
+            if recorder.isRecording { recorder.stop() }
+            else if meeting.isRecording { meeting.stop() }
+            else { Toast.show("Not recording", symbol: "video.slash", isError: true) }
         case "discard":
-            if recorder.isRecording { discardRecording() }
+            if recorder.isRecording || meeting.isRecording { discardRecording() }
             else if let fresh = freshFile, prompt?.isVisible == true { discard(fresh.file, kind: fresh.kind) }
             else { Toast.show("Nothing to discard", symbol: "video.slash", isError: true) }
         case "selfie": takeSelfie()
         case "meeting":
             if meeting.isRecording { meeting.togglePause() } else { startMeeting() }
-        case "meeting_stop":
-            if meeting.isRecording { meeting.stop() } else { Toast.show("No meeting recording", symbol: "waveform.slash", isError: true) }
         case "quick_play": showPicker()
         case "dashboard": showDashboard()
         default:
@@ -198,15 +220,21 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
 
     /// The dashboard; while recording, Stop matters more than anything else.
     func primaryActions() -> [PluginAction] {
-        if meeting.isRecording && !recorder.isRecording { return [action("meeting_stop"), action("meeting")].compactMap { $0 } }
+        if meeting.isRecording && !recorder.isRecording { return [action("stop"), action("meeting")].compactMap { $0 } }
         return [action(recorder.isRecording ? "stop" : "dashboard"), action("record")].compactMap { $0 }
+    }
+
+    /// The Esc stop prompt only while recording (and not while it's already open).
+    func isAvailable(_ action: PluginAction) -> Bool {
+        guard action.id == "stop_prompt" else { return true }
+        return (recorder.isRecording || meeting.isRecording) && stopPanel == nil
     }
 
     /// Pause and Stop only matter while recording; per-slot play stays shortcut-only.
     func showsInMenu(_ action: PluginAction) -> Bool {
         switch action.id {
-        case "pause", "stop", "discard": recorder.isRecording
-        case "meeting_stop": meeting.isRecording
+        case "stop_prompt": false
+        case "pause", "stop", "discard": recorder.isRecording || meeting.isRecording
         default: !action.id.hasPrefix("play_")
         }
     }
@@ -216,12 +244,19 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     func activate() {
         recorder.onFinish = { [weak self] url, error in self?.recordingFinished(url, error) }
         meeting.onFinish = { [weak self] capture, error in self?.meetingFinished(capture, error) }
+        // Register / release the Esc stop shortcut as recordings start and end.
+        let refresh: () -> Void = { DispatchQueue.main.async { AppState.shared.applyHotkeys() } }
+        recorder.$phase.map { $0 == .idle }.removeDuplicates().sink { _ in refresh() }.store(in: &observers)
+        meeting.$phase.map { $0 == .idle }.removeDuplicates().sink { _ in refresh() }.store(in: &observers)
         loadLibraries()
         player.gain = Float(settings.volume) / 100
         recoverMeetings()
     }
 
     func deactivate() {
+        observers.removeAll()
+        stopPanel?.orderOut(nil)
+        stopPanel = nil
         recorder.stop()
         meeting.stop()
         selfie.close()
@@ -242,6 +277,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     // MARK: Recording
 
     private func startRecording(screen: Bool = false) {
+        if selfie.isOpen { selfie.close() }   // The recording needs the camera.
         if screen && !CGPreflightScreenCaptureAccess() {
             state.requestScreenRecording()
             Toast.show("Screen + camera needs Screen Recording permission (System Settings → Privacy → Screen Recording).",
@@ -262,10 +298,11 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
                 let s = settings
                 let options = screen ? ScreenCamCapture.Options(
                     cameraSize: CGFloat(s.screenCameraSize) / 100,
-                    corner: ScreenCamCapture.Corner(rawValue: s.screenCameraCorner) ?? .bottomLeft) : nil
+                    corner: ScreenCamCapture.Corner(rawValue: s.screenCameraCorner) ?? .bottomLeft,
+                    systemVolume: Float(s.screenSystemVolume) / 100, micVolume: Float(s.screenMicVolume) / 100) : nil
                 try await recorder.start(to: dir.appendingPathComponent("\(screen ? "Screen" : "Video") \(stamp.string(from: Date())).mov"),
                                          microphone: microphone, screen: options)
-                Toast.show("Recording — \(shortcutText("stop")) to stop", symbol: "record.circle")
+                Toast.show("Recording — \(shortcutText("stop_prompt")) to stop", symbol: "record.circle")
             } catch {
                 Toast.show(error.localizedDescription, symbol: "video.slash", isError: true)
             }
@@ -392,7 +429,7 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
                                         compression: AudioCompression(rawValue: s.meetingCompression) ?? .compact,
                                         indicator: s.meetingIndicator)
                 let sources = [microphone ? "microphone" : nil, meeting.hasSystemAudio ? "Mac sound" : nil].compactMap { $0 }
-                var message = "Recording \(sources.joined(separator: " + ")) — \(shortcutText("meeting_stop")) to stop"
+                var message = "Recording \(sources.joined(separator: " + ")) — \(shortcutText("stop_prompt")) to stop"
                 if s.meetingSystemAudio && !meeting.hasSystemAudio { message += " (no Mac sound: needs Screen Recording)" }
                 Toast.show(message, symbol: "waveform.circle")
             } catch {
@@ -402,6 +439,12 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     }
 
     private func meetingFinished(_ capture: AudioCapture, _ error: Error?) {
+        if discardMeetingWhenFinished {
+            discardMeetingWhenFinished = false
+            try? FileManager.default.trashItem(at: capture.partial, resultingItemURL: nil)
+            Toast.show("Meeting recording discarded (moved to the Trash)", symbol: "trash")
+            return
+        }
         if let error, !FileManager.default.fileExists(atPath: capture.partial.path) {
             Toast.show(error.localizedDescription, symbol: "waveform.slash", isError: true)
             return
@@ -543,15 +586,61 @@ final class VideoNotesPlugin: ObservableObject, Plugin {
     // MARK: Discarding
 
     /// Pauses, asks, then stops and trashes the recording — or resumes if you change your mind.
+    /// Esc while recording: pause, then Save, Discard or keep going. A camera recording takes precedence
+    /// over a meeting if both run.
+    private func showStopPrompt() {
+        let video = recorder.isRecording
+        guard video || meeting.isRecording, stopPanel == nil, let screen = OverlayPanel.screenUnderMouse else { return }
+        let wasRunning = video ? recorder.phase == .recording : meeting.phase == .recording
+        if wasRunning { video ? recorder.togglePause() : meeting.togglePause() }
+        let title = video ? (recorder.isScreenRecording ? "Screen recording" : "Video") : "Meeting audio"
+        let elapsed = Transcriber.clock(video ? recorder.elapsed : meeting.elapsed)
+
+        var panel: OverlayPanel!
+        let finish: (StopChoice) -> Void = { [weak self] choice in
+            guard let self, stopPanel === panel else { return }
+            stopPanel = nil
+            panel.onKey = nil   // Breaks the panel ↔ closure cycle.
+            panel.dismiss()
+            state.applyHotkeys()
+            switch choice {
+            case .save:
+                if video { recorder.stop() } else { meeting.stop() }
+            case .discard:
+                if video { discardWhenFinished = true; recorder.stop() } else { discardMeetingWhenFinished = true; meeting.stop() }
+            case .keep:
+                if video, recorder.phase == .paused, wasRunning { recorder.togglePause() }
+                if !video, meeting.phase == .paused, wasRunning { meeting.togglePause() }
+            }
+        }
+        let size = CGSize(width: 440, height: 210)
+        let f = screen.visibleFrame
+        panel = OverlayPanel(frame: NSRect(x: f.midX - size.width / 2, y: f.midY + f.height * 0.08, width: size.width, height: size.height),
+                             content: StopPromptView(title: title, elapsed: elapsed, choose: finish))
+        panel.onKey = { event in
+            switch event.keyCode {
+            case 36, 76, 1: finish(.save)            // Return, Enter, S
+            case 51, 117, 2: finish(.discard)        // Delete, Forward Delete, D
+            case 53, 40: finish(.keep)               // Esc, K
+            default: return false
+            }
+            return true
+        }
+        stopPanel = panel
+        panel.show()
+        state.applyHotkeys()   // Releases Esc so the prompt itself receives it.
+    }
+
     private func discardRecording() {
-        let wasRunning = recorder.phase == .recording
-        if wasRunning { recorder.togglePause() }
+        let video = recorder.isRecording
+        let wasRunning = video ? recorder.phase == .recording : meeting.phase == .recording
+        if wasRunning { video ? recorder.togglePause() : meeting.togglePause() }
         guard confirmDiscard(keepTitle: "Keep Recording") else {
-            if wasRunning, recorder.phase == .paused { recorder.togglePause() }
+            if wasRunning, video, recorder.phase == .paused { recorder.togglePause() }
+            if wasRunning, !video, meeting.phase == .paused { meeting.togglePause() }
             return
         }
-        discardWhenFinished = true
-        recorder.stop()
+        if video { discardWhenFinished = true; recorder.stop() } else { discardMeetingWhenFinished = true; meeting.stop() }
     }
 
     /// Throws away a recording or selfie whose tag prompt is open.
@@ -936,25 +1025,28 @@ private struct VideoNotesSettingsSections: View {
                                                      set: { v in try? plugin.update { $0.compression = v.rawValue } })) {
                 Text("Off").tag(VideoCompressor.Mode.off)
                 Text("Efficient (HEVC)").tag(VideoCompressor.Mode.efficient)
-                Text("Smart (HEVC + blurred background)").tag(VideoCompressor.Mode.smart)
+                Text("Smart (720p HEVC, 15 fps)").tag(VideoCompressor.Mode.smart)
             }
             Toggle("Record the microphone", isOn: Binding(get: { s.microphone }, set: { v in try? plugin.update { $0.microphone = v } }))
         } header: {
             Text("Recording")
         } footer: {
-            Text("Compression runs in the background after each recording (camera videos to 720p, about 4 MB per minute) and keeps the original if the result isn't smaller. Details: docs/video-compression.md.")
+            Text("Compression runs in the background after each recording (camera videos to 720p — Smart also drops to 15 fps, about 4 MB per minute) and keeps the original if the result isn't smaller. Details: docs/video-compression.md.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section {
-            CameraSizeSlider(plugin: plugin)
+            CameraLayoutPreview(plugin: plugin)
+            PercentSlider(plugin: plugin, title: "Camera size", range: VideoNotesSettings.screenCameraSizeRange, step: 5, key: \.screenCameraSize)
             Picker("Camera corner", selection: Binding(get: { ScreenCamCapture.Corner(rawValue: s.screenCameraCorner) ?? .bottomLeft },
                                                        set: { v in try? plugin.update { $0.screenCameraCorner = v.rawValue } })) {
                 ForEach(ScreenCamCapture.Corner.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            PercentSlider(plugin: plugin, title: "Mac sound", range: VideoNotesSettings.screenVolumeRange, step: 5, key: \.screenSystemVolume)
+            PercentSlider(plugin: plugin, title: "Your voice", range: VideoNotesSettings.screenVolumeRange, step: 5, key: \.screenMicVolume)
         } header: {
             Text("Screen + camera")
         } footer: {
-            Text("\(plugin.shortcutText("record_screen")) records the screen at 720p with your camera in a corner, the Mac's sound and the microphone. Unless compression is off, they're shrunk afterwards to 15 fps HEVC (text stays sharp).")
+            Text("\(plugin.shortcutText("record_screen")) records the screen at 720p with your camera in a corner — drag the square in the preview to move it, or its handle to resize it — the Mac's sound and the microphone. Mac sound and Your voice set how loud each is in the saved video (applied when you stop; above 100% boosts, with a soft limiter). Unless compression is off, they're shrunk afterwards to 15 fps HEVC (text stays sharp).")
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section {
@@ -983,7 +1075,7 @@ private struct VideoNotesSettingsSections: View {
         } header: {
             Text("Meeting audio")
         } footer: {
-            Text("\(plugin.shortcutText("meeting")) starts (press again to pause / resume), \(plugin.shortcutText("meeting_stop")) stops. The microphone and the Mac's sound are mixed into one .m4a in “quick-capture-audio”; the Mac's sound needs Screen Recording permission. The timer never shows up in screen sharing.")
+            Text("\(plugin.shortcutText("meeting")) starts (press again to pause / resume), \(plugin.shortcutText("stop")) stops (the same Stop as videos). The microphone and the Mac's sound are mixed into one .m4a in “quick-capture-audio”; the Mac's sound needs Screen Recording permission. The timer never shows up in screen sharing.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         TranscriptionSection(plugin: plugin)
@@ -1040,20 +1132,23 @@ private struct TranscriptionSection: View {
     }
 }
 
-/// Size of the camera square in screen + camera recordings, in percent of the video height.
-private struct CameraSizeSlider: View {
+/// A labelled percent slider for an Int setting; saves when the drag ends.
+private struct PercentSlider: View {
     @ObservedObject var plugin: VideoNotesPlugin
+    let title: String
+    let range: ClosedRange<Int>
+    let step: Double
+    let key: WritableKeyPath<VideoNotesSettings, Int>
     @State private var value: Double?
 
     var body: some View {
-        let range = VideoNotesSettings.screenCameraSizeRange
-        let current = value ?? Double(plugin.settings.screenCameraSize)
+        let current = value ?? Double(plugin.settings[keyPath: key])
         HStack(spacing: 8) {
-            Text("Camera size")
+            Text(title)
             Slider(value: Binding(get: { current }, set: { value = $0 }),
-                   in: Double(range.lowerBound)...Double(range.upperBound), step: 5) { editing in
+                   in: Double(range.lowerBound)...Double(range.upperBound), step: step) { editing in
                 guard !editing, let v = value else { return }
-                try? plugin.update { $0.screenCameraSize = Int(v) }
+                try? plugin.update { $0[keyPath: key] = Int(v) }
                 value = nil
             }
             Text("\(Int(current))%").monospacedDigit().frame(width: 44, alignment: .trailing).foregroundStyle(.secondary)

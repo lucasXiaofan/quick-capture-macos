@@ -33,10 +33,12 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
     let actions = [
         PluginAction(id: "read", title: "Read Screenshot Aloud", symbol: "text.viewfinder", defaultShortcut: nil),
         PluginAction(id: "clipboard", title: "Read Clipboard Aloud", symbol: "doc.on.clipboard", defaultShortcut: nil),
+        PluginAction(id: "pause", title: "Pause / Resume Reading", symbol: "playpause", defaultShortcut: nil),
         PluginAction(id: "stop", title: "Stop Reading", symbol: "stop.circle", defaultShortcut: nil),
     ]
 
     private let engine = ReadAloudEngine()
+    private let panel = ReadAloudPanelController()
     private var busy = false
     @Published private(set) var python: String?
     @Published private(set) var pythonChecked = false
@@ -67,11 +69,14 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
     }
 
     func activate() {
-        engine.onStatus = { Toast.show($0, symbol: "speaker.slash", isError: true) }
+        engine.onStatus = { [weak self] in
+            // The panel already shows the problem while a reading is on screen.
+            if self?.engine.session?.isActive == false || self?.engine.session == nil { Toast.show($0, symbol: "speaker.slash", isError: true) }
+        }
         Task { await locatePython() }
     }
 
-    func deactivate() { engine.shutdown() }
+    func deactivate() { engine.shutdown(); panel.close() }
 
     func configDidChange() {
         // New limits/voice apply on the next start; restart only if the engine isn't busy speaking.
@@ -79,15 +84,47 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
         Task { await locatePython() }
     }
 
-    func showsInMenu(_ action: PluginAction) -> Bool { action.id != "stop" || engine.isPlaying }
+    func showsInMenu(_ action: PluginAction) -> Bool { !["stop", "pause"].contains(action.id) || engine.isPlaying }
+
+    /// A new panel for a new reading; whatever was playing stops.
+    private func beginSession(text: String = "", status: ReadAloudSession.Status) -> ReadAloudSession {
+        engine.stop()
+        let s = ReadAloudSession(text: text)
+        s.status = status
+        engine.attach(s)
+        s.onStop = { [weak self] in self?.stopReading() }
+        s.onClose = { [weak self] in self?.stopReading() }
+        s.onReplay = { [weak self] in self?.replayLast() }
+        panel.show(s)
+        return s
+    }
+
+    private func stopReading() {
+        engine.stop()
+        panel.close()
+    }
+
+    private func replayLast() {
+        guard let last = engine.lastAudio else { return }
+        let s = beginSession(status: .reading)
+        engine.replay(last, session: s)
+    }
+
+    /// Tell the user in the panel (and the notification, if it was not the panel's turn already).
+    private func report(_ message: String, symbol: String = "exclamationmark.triangle") {
+        if let s = engine.session, s.isActive || s.status != .finished { engine.fail(message) }
+        else { Toast.show(message, symbol: symbol, isError: true) }
+    }
 
     func perform(_ action: PluginAction) {
         switch action.id {
-        case "stop": engine.stop()
+        case "stop": stopReading()
+        case "pause": engine.togglePause()
         case "clipboard":
             guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
                 Toast.show("The clipboard has no text.", symbol: "doc.on.clipboard", isError: true); return
             }
+            _ = beginSession(text: text, status: .preparing("Starting voice…"))
             Task { if await startEngine() { engine.speak(text, voice: settings.voice, speed: settings.speed) } }
         default:
             guard !busy else { return }
@@ -98,7 +135,7 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
 
     func menuItems() -> [NSMenuItem] {
         var items: [NSMenuItem] = []
-        if let last = engine.lastAudio { items.append(ClosureMenuItem("Replay Last Reading", symbol: "arrow.counterclockwise") { [weak self] in self?.engine.replay(last) }) }
+        if let last = engine.lastAudio { items.append(ClosureMenuItem("Replay Last Reading", symbol: "arrow.counterclockwise") { [weak self] in self?.replayLast() }) }
         items.append(ClosureMenuItem("Open Read Aloud Folder", symbol: "folder") { NSWorkspace.shared.open(Self.dataDir) })
         return items
     }
@@ -115,15 +152,20 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
         defer { try? FileManager.default.removeItem(at: shot) }
         _ = try? await Shell.run("/usr/sbin/screencapture", ["-i", "-x", "-o", shot.path], timeout: 600)
         guard let size = (try? shot.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 else { return }  // Esc
+        let session = beginSession(status: .preparing("Recognizing text…"))
         do {
             let text = try await ScreenOCR.text(in: shot)
+            guard session === engine.session, session.isActive else { return }   // closed or replaced meanwhile
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                Toast.show("No text found in the selection.", symbol: "text.viewfinder", isError: true); return
+                report("No text found in the selection.", symbol: "text.viewfinder"); return
             }
+            session.setRawText(text)
+            session.status = .preparing("Starting voice…")
             guard await engineStarted.value else { return }
+            guard session === engine.session, session.isActive else { return }
             engine.speak(text, voice: settings.voice, speed: settings.speed)
         } catch {
-            Toast.show(error.localizedDescription, symbol: "exclamationmark.triangle", isError: true)
+            report(error.localizedDescription)
         }
     }
 
@@ -131,11 +173,11 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
         if engine.isRunning { return true }
         guard let python = await locatePython() else {
             state.showSettings?(id)
-            Toast.show("Read Aloud needs a Python with mlx-audio — see its Settings page.", symbol: "speaker.slash", isError: true)
+            report("Read Aloud needs a Python with mlx-audio — see its Settings page.", symbol: "speaker.slash")
             return false
         }
         guard let script = Paths.resource("kokoro_server.py", plugin: id) else {
-            Toast.show("kokoro_server.py is missing from the app bundle.", isError: true); return false
+            report("kokoro_server.py is missing from the app bundle."); return false
         }
         let s = settings
         try? FileManager.default.createDirectory(at: Self.modelsDir, withIntermediateDirectories: true)
@@ -146,7 +188,7 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
                     "--voice", s.voice, "--speed", String(s.speed), "--mem-limit-gb", String(s.memoryLimitGB),
                     "--audio-limit-mb", String(s.audioLimitMB), "--idle-exit", String(s.idleMinutes * 60)]
         do { try engine.start(.init(python: python, script: script.path, args: args, env: env)); return true } catch {
-            Toast.show("Could not start the Read Aloud engine: \(error.localizedDescription)", isError: true); return false
+            report("Could not start the Read Aloud engine: \(error.localizedDescription)"); return false
         }
     }
 
@@ -201,6 +243,7 @@ final class ReadAloudPlugin: ObservableObject, Plugin {
 
     func clear(_ url: URL) {
         engine.shutdown()
+        panel.close()
         try? FileManager.default.removeItem(at: url)
         refreshSizes()
     }

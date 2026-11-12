@@ -10,7 +10,8 @@ import os
 /// Camera frames drive the output, so the video stays at a steady frame rate even while the screen is
 /// still (ScreenCaptureKit only sends frames when something changes); each camera frame is drawn over
 /// the latest screen frame. This app's own windows (the preview, toasts) are left out of the capture.
-/// System sound and microphone go to two audio tracks while recording and are mixed into one at the end.
+/// System sound and microphone go to two audio tracks while recording and are mixed into one at the end,
+/// each at its own volume (`Options.systemVolume`, `micVolume`).
 /// All timestamps are moved onto the host clock, pauses are cut out, and the file starts at zero.
 final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
     AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
@@ -40,6 +41,9 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
         /// Camera square side as a fraction of the video height.
         var cameraSize: CGFloat
         var corner: Corner
+        /// Volume of the Mac's sound and of the microphone in the final mix; 1 = as captured.
+        var systemVolume: Float = 1
+        var micVolume: Float = 1
     }
 
     static let height = 720
@@ -213,7 +217,7 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
             return writer.error ?? AppError("Writing the recording failed.")
         }
         do {
-            try await Self.mixAudio(raw, to: destination)
+            try await Self.mixAudio(raw, to: destination, system: options.systemVolume, mic: options.micVolume)
             try? FileManager.default.removeItem(at: raw)
         } catch {
             // Keep the recording with its two audio tracks rather than lose it.
@@ -328,10 +332,15 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
 
     /// Copies the video untouched and mixes every audio track into one stereo AAC track, so every player
     /// (and the playback volume boost) hears both the Mac's sound and your voice.
-    static func mixAudio(_ source: URL, to destination: URL) async throws {
+    /// `system` and `mic` scale the two tracks (the Mac's sound is written first). `AVAudioMix` volumes stop
+    /// at 1, so the mix runs at the volumes divided by the louder one and the result is multiplied back up,
+    /// through the same soft limiter as playback, so a boosted voice rounds off instead of clipping.
+    static func mixAudio(_ source: URL, to destination: URL, system: Float = 1, mic: Float = 1) async throws {
         let asset = AVURLAsset(url: source)
         let audio = try await asset.loadTracks(withMediaType: .audio)
-        guard audio.count > 1, let video = try await asset.loadTracks(withMediaType: .video).first else {
+        let volumes = audio.indices.map { $0 == 0 ? system : mic }
+        guard !audio.isEmpty, audio.count > 1 || volumes[0] != 1,
+              let video = try await asset.loadTracks(withMediaType: .video).first else {
             try FileManager.default.moveItem(at: source, to: destination)
             return
         }
@@ -342,6 +351,14 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
             AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
             AVLinearPCMIsNonInterleaved: false, AVLinearPCMIsBigEndianKey: false,
         ])
+        let peak = max(volumes.max() ?? 1, 0.001)
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = zip(audio, volumes).map { track, volume in
+            let params = AVMutableAudioMixInputParameters(track: track)
+            params.setVolume(volume / peak, at: .zero)
+            return params
+        }
+        audioOut.audioMix = mix
         reader.add(videoOut)
         reader.add(audioOut)
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
@@ -358,7 +375,9 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
             group.enter()
             input.requestMediaDataWhenReady(on: DispatchQueue(label: "video-notes.mix.\(label)")) {
                 while input.isReadyForMoreMediaData {
-                    guard let sample = output.copyNextSampleBuffer(), input.append(sample) else {
+                    let sample = output.copyNextSampleBuffer()
+                    if let sample, input === audioIn { amplify(sample, by: peak) }
+                    guard let sample, input.append(sample) else {
                         input.markAsFinished()
                         group.leave()
                         return
@@ -375,5 +394,17 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
             try? FileManager.default.removeItem(at: destination)
             throw writer.error ?? AppError("Mixing the audio failed.")
         }
+    }
+
+    /// Multiplies the float samples in place, soft-limited. Always runs, since two summed tracks can clip too.
+    private static func amplify(_ sample: CMSampleBuffer, by gain: Float) {
+        guard let block = CMSampleBufferGetDataBuffer(sample) else { return }
+        var length = 0
+        var data: UnsafeMutablePointer<CChar>?
+        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length,
+                                          dataPointerOut: &data) == kCMBlockBufferNoErr,
+              CMBlockBufferIsRangeContiguous(block, atOffset: 0, length: length), let data else { return }
+        let samples = UnsafeMutableRawPointer(data).assumingMemoryBound(to: Float.self)
+        for i in 0..<length / MemoryLayout<Float>.size { samples[i] = VideoGain.limit(samples[i] * gain) }
     }
 }

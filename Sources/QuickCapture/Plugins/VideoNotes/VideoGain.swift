@@ -53,7 +53,7 @@ final class VideoGain: @unchecked Sendable {
     }
 
     /// Linear up to 0.9, then eases toward 1 so boosted peaks never clip hard.
-    private static func limit(_ x: Float) -> Float {
+    static func limit(_ x: Float) -> Float {
         let a = abs(x)
         guard a > 0.9 else { return x }
         let y = 0.9 + 0.1 * tanh((a - 0.9) / 0.1)

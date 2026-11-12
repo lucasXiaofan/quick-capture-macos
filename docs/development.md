@@ -1,3 +1,7 @@
+---
+updated_at: 2026-10-28T14:36:54.130-04:00
+edited_seconds: 70
+---
 # Development
 
 Requires macOS 13+ and Xcode or the Command Line Tools. Node is only needed for the tests.
@@ -36,6 +40,7 @@ node tests/render.test.cjs
 
 ```bash
 node tests/skills.test.cjs
+scripts/tickets-test.sh        # Tickets: ticket ⇄ Markdown round trip (swiftc) and page logic (node)
 ```
 
 ```bash
