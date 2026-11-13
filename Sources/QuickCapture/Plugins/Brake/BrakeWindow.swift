@@ -7,9 +7,11 @@ import SwiftUI
 @MainActor
 final class BrakeSession: ObservableObject {
     let settings: BrakeSettings
+    /// What this showing shows; nil shows only the line.
+    let source: BrakeSource?
     let medium: BrakeMedium?
     let missingFile: URL?
-    private weak var plugin: BrakePlugin?
+    private(set) weak var plugin: BrakePlugin?
 
     /// A PDF or EPUB.
     private(set) var book: BookController?
@@ -21,8 +23,10 @@ final class BrakeSession: ObservableObject {
     init(settings: BrakeSettings, plugin: BrakePlugin) {
         self.settings = settings
         self.plugin = plugin
-        bookmarkedSeconds = settings.startSeconds
-        let url = settings.fileURL
+        let source = settings.currentSource
+        self.source = source
+        bookmarkedSeconds = source?.startSeconds ?? 0
+        let url = source?.fileURL
         if let url, !FileManager.default.fileExists(atPath: url.path) {
             missingFile = url
             medium = nil
@@ -30,12 +34,12 @@ final class BrakeSession: ObservableObject {
         }
         missingFile = nil
         medium = url.flatMap(BrakeMedium.init)
-        guard let url, let medium else { return }
+        guard let url, let medium, let source else { return }
         switch medium {
         case .pdf:
-            if let b = BrakeBook(url: url) { book = PDFBookController(book: b, settings: settings, plugin: plugin) }
+            if let b = BrakeBook(url: url) { book = PDFBookController(book: b, source: source, plugin: plugin) }
         case .epub:
-            book = EpubBookController(url: url, settings: settings, plugin: plugin)
+            book = EpubBookController(url: url, source: source, settings: settings, plugin: plugin)
         case .video, .audio:
             let player = AVPlayer(url: url)
             let view = AVPlayerView()
@@ -53,7 +57,7 @@ final class BrakeSession: ObservableObject {
     func start() {
         book?.start()
         if let player {
-            let start = CMTime(seconds: settings.startSeconds, preferredTimescale: 600)
+            let start = CMTime(seconds: source?.startSeconds ?? 0, preferredTimescale: 600)
             player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                 Task { @MainActor in if self?.settings.autoplay == true { self?.player?.play() } }
             }
@@ -68,14 +72,15 @@ final class BrakeSession: ObservableObject {
     }
 
     var currentSeconds: Double {
-        guard let t = player?.currentTime().seconds, t.isFinite else { return settings.startSeconds }
+        guard let t = player?.currentTime().seconds, t.isFinite else { return source?.startSeconds ?? 0 }
         return max(0, t)
     }
 
     func startHere() {
         let t = (currentSeconds * 10).rounded() / 10
         do {
-            try plugin?.update { $0.startSeconds = t }
+            guard let id = source?.id else { return }
+            try plugin?.updateSource(id) { $0.startSeconds = t }
             bookmarkedSeconds = t
             Toast.show("Brake now starts at \(Self.clock(t))")
         } catch { Toast.show(error.localizedDescription) }
@@ -96,7 +101,7 @@ final class BrakeSession: ObservableObject {
             let height = visible.height * 0.88
             let chrome: CGFloat = settings.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 120 : 150
             let b = (book as? PDFBookController)?.book
-            let pageWidth = (height - chrome) * (b?.aspect(settings.page) ?? 0.7)
+            let pageWidth = (height - chrome) * (b?.aspect(source?.page ?? 1) ?? 0.7)
             let spreadWidth = pageWidth * 2 + 40
             want = NSSize(width: spreadWidth <= visible.width * 0.92 && (b?.pageCount ?? 0) > 1 ? spreadWidth : pageWidth + 40,
                           height: height)
@@ -173,6 +178,10 @@ final class BrakeWindow: NSWindow {
             }
             return true
         }
+        if mods == [.command, .shift], key == "d" {
+            book.showHere()
+            return true
+        }
         if mods == [.command, .control], key == "h" {
             book.highlightSelection(.yellow)
             return true
@@ -222,7 +231,7 @@ private struct BrakeView: View {
 
     var body: some View {
         if let book = session.book {
-            BookReader(book: book, line: line, close: close)
+            BookReader(book: book, session: session, line: line, close: close)
         } else {
             other
         }
@@ -277,6 +286,7 @@ private struct BrakeView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
+            SourceMenu(session: session)
             if session.medium == .video || session.medium == .audio {
                 Text("Starts at \(BrakeSession.clock(session.bookmarkedSeconds))").monospacedDigit().foregroundStyle(.secondary)
                 Button("Start Here Next Time") { session.startHere() }
@@ -293,6 +303,7 @@ private struct BrakeView: View {
 /// controls, and a scrubber.
 private struct BookReader: View {
     @ObservedObject var book: BookController
+    let session: BrakeSession
     let line: String
     let close: () -> Void
     @State private var hovering = false
@@ -320,17 +331,30 @@ private struct BookReader: View {
                     .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     .padding(.horizontal, 150)
                 HStack(spacing: 4) {
+                    SourceMenu(session: session).padding(.leading, 76)
                     Spacer()
                     highlightMenu
                     textButton
-                    Button { book.bookmarkHere() } label: {
-                        Image(systemName: book.bookmarkShowing ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(book.bookmarkShowing ? Color(red: 0.82, green: 0.16, blue: 0.15) : .secondary)
-                            .frame(width: 30, height: 24).contentShape(Rectangle())
+                    if book.hasManyBookmarks {
+                        bookmarksMenu
+                        bookmarkButton(color: book.bookmarkShowing ? BookmarkRibbon.plainColor : .secondary,
+                                       help: book.bookmarkShowing ? "Remove this bookmark (⌘D)" : "Bookmark this page (⌘D)")
+                        Button { book.showHere() } label: {
+                            Image(systemName: book.shownShowing && book.bookmarkShowing ? "pin.fill" : "pin")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(book.shownShowing && book.bookmarkShowing ? BookmarkRibbon.shownColor : .secondary)
+                                .frame(width: 30, height: 24).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!book.bookmarkShowing)
+                        .opacity(book.bookmarkShowing ? 1 : 0.35)
+                        .help(book.shownShowing && book.bookmarkShowing ? "Brake opens here"
+                              : book.bookmarkShowing ? "Make this the bookmark Brake opens at (⇧⌘D)"
+                              : "Bookmark this page first, then pin it to have Brake open here")
+                    } else {
+                        bookmarkButton(color: book.bookmarkShowing ? BookmarkRibbon.shownColor : .secondary,
+                                       help: book.bookmarkShowing ? "Brake opens here" : "Bookmark this page — Brake opens here next time (⌘D)")
                     }
-                    .buttonStyle(.plain)
-                    .help(book.bookmarkShowing ? "Brake opens here" : "Bookmark this page — Brake opens here next time (⌘D)")
                 }
                 .padding(.trailing, 12)
             }
@@ -344,6 +368,36 @@ private struct BookReader: View {
             }
         }
         .padding(.bottom, 4)
+    }
+
+    private func bookmarkButton(color: Color, help: String) -> some View {
+        Button { book.bookmarkHere() } label: {
+            Image(systemName: book.bookmarkShowing ? "bookmark.fill" : "bookmark")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(color)
+                .frame(width: 30, height: 24).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    /// Every bookmark, to jump to; the pinned one is where Brake opens.
+    private var bookmarksMenu: some View {
+        Menu {
+            if book.marks.isEmpty { Text("No bookmarks yet — ⌘D bookmarks this page") }
+            ForEach(book.marks) { m in
+                Button { book.goTo(mark: m.id) } label: {
+                    if m.shown { Label(m.label, systemImage: "pin.fill") } else { Text(m.label) }
+                }
+            }
+        } label: {
+            Image(systemName: "list.bullet")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: 30, height: 24)
+        .help("Bookmarks")
     }
 
     private var highlightMenu: some View {
@@ -380,7 +434,7 @@ private struct BookReader: View {
         return ZStack(alignment: .topLeading) {
             Hosted(view: book.contentView)
             if let r = book.ribbon {
-                BookmarkRibbon(width: 20)
+                BookmarkRibbon(width: 20, color: book.shownShowing ? BookmarkRibbon.shownColor : BookmarkRibbon.plainColor)
                     .offset(x: r.maxX - 20 * 1.9, y: max(0, r.minY) - 3)
                     .allowsHitTesting(false)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -415,11 +469,11 @@ private struct BookReader: View {
     private var footer: some View {
         HStack(spacing: 14) {
             Button { book.goToBookmark() } label: {
-                Label("Back to Bookmark", systemImage: "bookmark.fill")
+                Label(book.hasShownMark ? "Back to Bookmark" : "Back to Start", systemImage: book.hasShownMark ? "pin.fill" : "arrow.uturn.backward")
             }
             .buttonStyle(.borderless)
-            .opacity(book.bookmarkShowing || book.message != nil ? 0 : 1)
-            .disabled(book.bookmarkShowing || book.message != nil)
+            .opacity(book.shownShowing || book.message != nil ? 0 : 1)
+            .disabled(book.shownShowing || book.message != nil)
             if book.sliderRange.upperBound > book.sliderRange.lowerBound {
                 Slider(value: Binding(get: { scrub ?? book.sliderValue }, set: { scrub = $0 }), in: book.sliderRange) { editing in
                     if !editing, let s = scrub {
@@ -480,6 +534,33 @@ private struct TextOptions: View {
         }
         .padding(14)
         .frame(width: 230)
+    }
+}
+
+/// Switches what Brake shows, when there is more than one thing to show. Reopens the window on the new one.
+private struct SourceMenu: View {
+    let session: BrakeSession
+
+    var body: some View {
+        let s = session.settings
+        if s.sources.count > 1 || (s.sources.count == 1 && session.source == nil) {
+            Menu {
+                ForEach(s.sources) { src in
+                    Button { session.plugin?.makeCurrent(src.id, reopen: true) } label: {
+                        let name = src.fileURL?.lastPathComponent ?? src.path
+                        if src.id == session.source?.id { Label(name, systemImage: "checkmark") } else { Text(name) }
+                    }
+                }
+                Divider()
+                Button("Only the Line") { session.plugin?.makeCurrent("", reopen: true) }
+            } label: {
+                Image(systemName: "square.stack")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Show something else")
+        }
     }
 }
 

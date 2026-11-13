@@ -75,13 +75,17 @@ final class BrakeBook {
 }
 
 /// The red ribbon that hangs over the top edge of a bookmarked page.
+/// Red for the bookmark Brake opens at; slate blue for an ordinary one.
 struct BookmarkRibbon: View {
+    static let shownColor = Color(red: 0.82, green: 0.16, blue: 0.15)
+    static let plainColor = Color(red: 0.33, green: 0.47, blue: 0.68)
+
     var width: CGFloat = 20
+    var color: Color = BookmarkRibbon.shownColor
 
     var body: some View {
         RibbonShape()
-            .fill(LinearGradient(colors: [Color(red: 0.86, green: 0.19, blue: 0.17), Color(red: 0.68, green: 0.10, blue: 0.10)],
-                                 startPoint: .leading, endPoint: .trailing))
+            .fill(LinearGradient(colors: [color, color.opacity(0.78)], startPoint: .leading, endPoint: .trailing))
             .frame(width: width, height: width * 2.4)
             .shadow(color: .black.opacity(0.28), radius: 1.5, x: 0, y: 1)
             .accessibilityLabel("Bookmarked")

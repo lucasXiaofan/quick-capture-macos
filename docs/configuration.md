@@ -50,9 +50,8 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
     "brake": {
       "enabled": false,
       "hotkeys": { "show": "" },
-      "path": "",
-      "page": 1,
-      "start_seconds": 0,
+      "sources": [],
+      "current": "",
       "text": "Stop. Breathe. Is this what you really want to be doing right now?",
       "autoplay": true
     },
@@ -160,9 +159,9 @@ Everything in Settings is stored in `~/Library/Application Support/Quick Capture
 | `storage_manager.project_roots` | Folders searched for `node_modules` and virtualenvs (see [Storage Manager](storage-manager.md)); default `~/Documents`, `~/Developer`, `~/Projects`, … (missing ones skipped) |
 | `storage_manager.extra_paths`, `protected_paths` | Your own folders to list for cleaning / folders that are never cleaned |
 | `storage_manager.min_discovered_mb` | Hide found items (app caches, environments) smaller than this (default `100`) |
-| `brake.path` | The one file Brake shows: PDF, video, audio or image; `~` allowed; empty shows only `brake.text` (see [Brake](brake.md)) |
-| `brake.page` | PDF page Brake opens at, from 1 (the bookmark) |
-| `brake.start_seconds`, `autoplay` | Where video/audio starts, and whether it plays at once (default `true`) |
+| `brake.sources` | Everything Brake can show (PDF, EPUB, video, audio or image), each with its own `path` (`~` allowed), `page`, `pdf_zoom`, `start_seconds`, EPUB `bookmarks` and `shown_bookmark` (see [Brake](brake.md)) |
+| `brake.current` | `id` of the source Brake shows; empty shows only `brake.text` |
+| `brake.autoplay` | Whether video/audio plays at once (default `true`) |
 | `brake.text` | Line shown above the file, or on its own |
 | `keyboard_mouse.speed` | 0.3–3; multiplier for the top pointer speed |
 | `nose_control.panel_layout` | `columns` or `rows`: how the three panels are arranged |

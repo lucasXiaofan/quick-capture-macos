@@ -139,7 +139,7 @@ final class VideoRecorder: NSObject, ObservableObject, AVCaptureFileOutputRecord
         var size = NSSize(width: 288, height: 162)
         var frame: NSRect?
         if let screenCam, let display = screenCam.displayFrame {
-            // Over the spot the camera square takes in the video (this app's windows aren't recorded).
+            // Over the spot the camera square takes in the video (the whole screen is recorded, this preview included).
             let side = (display.height * screenCam.options.cameraSize).rounded()
             frame = screenCam.options.corner.rect(side: side, in: display)
             size = NSSize(width: side, height: side)

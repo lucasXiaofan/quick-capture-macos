@@ -9,7 +9,7 @@ import os
 ///
 /// Camera frames drive the output, so the video stays at a steady frame rate even while the screen is
 /// still (ScreenCaptureKit only sends frames when something changes); each camera frame is drawn over
-/// the latest screen frame. This app's own windows (the preview, toasts) are left out of the capture.
+/// the latest screen frame. Everything on the display is recorded, this app's own windows included.
 /// System sound and microphone go to two audio tracks while recording and are mixed into one at the end,
 /// each at its own volume (`Options.systemVolume`, `micVolume`).
 /// All timestamps are moved onto the host clock, pauses are cut out, and the file starts at zero.
@@ -96,8 +96,7 @@ final class ScreenCamCapture: NSObject, SCStreamOutput, SCStreamDelegate,
         guard let display = content.displays.first(where: { $0.displayID == id }) ?? content.displays.first else {
             throw AppError("No display to record.")
         }
-        let me = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
-        let filter = SCContentFilter(display: display, excludingApplications: me, exceptingWindows: [])
+        let filter = SCContentFilter(display: display, excludingWindows: [])
         return try ScreenCamCapture(url: url, options: options, display: display, filter: filter,
                                     displayFrame: display.displayID == id ? frame : nil)
     }

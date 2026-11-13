@@ -84,17 +84,34 @@ enum Paper {
     static var cssInk: String { isDark ? "#dcdad5" : "#1d1d1f" }
 }
 
+/// A bookmark as the reader's bookmark menu lists it.
+struct BookMarkItem: Identifiable, Equatable {
+    let id: String
+    let label: String
+    /// Brake opens here.
+    let shown: Bool
+}
+
 /// What the Brake window needs from a book, PDF or EPUB: one view to show, page turning, the
-/// bookmark, highlights and text size. Subclasses fill in the published state.
+/// bookmarks, highlights and text size. Subclasses fill in the published state.
 @MainActor
 class BookController: ObservableObject {
     weak var plugin: BrakePlugin?
+    /// The `BrakeSource` this book is, for saving its bookmark and zoom.
+    let sourceID: String
 
     @Published var title = ""
     @Published var positionLabel = ""
     @Published var sliderValue = 1.0
     @Published var sliderRange: ClosedRange<Double> = 1...1
+    /// The page on screen is bookmarked.
     @Published var bookmarkShowing = false
+    /// The page on screen is the bookmark Brake opens at.
+    @Published var shownShowing = false
+    /// Some bookmark is the one Brake opens at (otherwise it opens at the start).
+    @Published var hasShownMark = true
+    /// Every bookmark, for the bookmark menu (EPUB only; a PDF has just the one).
+    @Published var marks: [BookMarkItem] = []
     /// Where the bookmarked page is inside `contentView` (top-left origin); nil when it isn't showing.
     @Published var ribbon: CGRect?
     @Published var hasSelection = false
@@ -109,8 +126,13 @@ class BookController: ObservableObject {
     /// True when a sideways swipe should pan the page rather than turn it.
     var swipePans: Bool { false }
     var isEPUB: Bool { false }
+    /// Many bookmarks, one of them the one Brake opens at (EPUB); otherwise a single bookmark that is both.
+    var hasManyBookmarks: Bool { false }
 
-    init(plugin: BrakePlugin?) { self.plugin = plugin }
+    init(plugin: BrakePlugin?, sourceID: String) {
+        self.plugin = plugin
+        self.sourceID = sourceID
+    }
 
     func start() {}
     func stop() {}
@@ -122,8 +144,13 @@ class BookController: ObservableObject {
     func last() {}
     func goToSlider(_ value: Double) {}
     func sliderLabel(_ value: Double) -> String { "" }
+    /// Bookmarks the page on screen (or, for an EPUB, removes its bookmark).
     func bookmarkHere() {}
+    /// Makes the bookmark on screen the one Brake opens at.
+    func showHere() {}
+    /// Back to where Brake opens.
     func goToBookmark() {}
+    func goTo(mark id: String) {}
     func highlightSelection(_ color: HighlightColor) {}
     /// +1 bigger, -1 smaller, 0 back to the default.
     func textSize(_ step: Int) {}
@@ -131,6 +158,10 @@ class BookController: ObservableObject {
 
     func save(_ change: @escaping (inout BrakeSettings) -> Void) {
         do { try plugin?.update(change) } catch { Toast.show(error.localizedDescription) }
+    }
+
+    func saveSource(_ change: @escaping (inout BrakeSource) -> Void) {
+        do { try plugin?.updateSource(sourceID, change) } catch { Toast.show(error.localizedDescription) }
     }
 
     /// Slides the view sideways, like turning a page.
@@ -166,12 +197,12 @@ final class PDFBookController: BookController {
     override var contentPadding: CGFloat { 14 }
     override var swipePans: Bool { pdfView.scaleFactor > pdfView.scaleFactorForSizeToFit * 1.02 }
 
-    init(book: BrakeBook, settings: BrakeSettings, plugin: BrakePlugin) {
+    init(book: BrakeBook, source: BrakeSource, plugin: BrakePlugin) {
         self.book = book
-        page = book.clamp(settings.page)
+        page = book.clamp(source.page)
         bookmarkedPage = page
-        zoom = settings.pdfZoom
-        super.init(plugin: plugin)
+        zoom = source.pdfZoom
+        super.init(plugin: plugin, sourceID: source.id)
         title = book.title
         sliderRange = 1...Double(max(2, book.pageCount))
         pdfView.controller = self
@@ -288,6 +319,7 @@ final class PDFBookController: BookController {
         positionLabel = spread.count == 2 ? "Pages \(spread[0])–\(spread[1]) of \(book.pageCount)" : "Page \(page) of \(book.pageCount)"
         sliderValue = Double(page)
         bookmarkShowing = spread.contains(bookmarkedPage)
+        shownShowing = bookmarkShowing
         canGoBack = book.previous(page, twoUp: twoUp) != nil
         canGoForward = book.next(page, twoUp: twoUp) != nil
         updateRibbon()
@@ -309,7 +341,7 @@ final class PDFBookController: BookController {
     override func bookmarkHere() {
         guard !bookmarkShowing else { return }
         let p = page
-        save { $0.page = p }
+        saveSource { $0.page = p }
         bookmarkedPage = p
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { sync() }
         Toast.show("Brake now opens at page \(p)")
@@ -324,7 +356,7 @@ final class PDFBookController: BookController {
         if abs(zoom - 1) < 0.04 { zoom = 1 }
         applyZoom()
         let z = (zoom * 100).rounded() / 100
-        save { $0.pdfZoom = z }
+        saveSource { $0.pdfZoom = z }
     }
 
     var zoomPercent: Int { Int((zoom * 100).rounded()) }
@@ -345,7 +377,7 @@ final class PDFBookController: BookController {
         zoom = min(5, max(0.25, pdfView.scaleFactor / fit))
         if abs(zoom - 1) < 0.04 { zoom = 1; pdfView.autoScales = true }
         let z = (zoom * 100).rounded() / 100
-        save { $0.pdfZoom = z }
+        saveSource { $0.pdfZoom = z }
     }
 
     // MARK: Highlights

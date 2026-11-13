@@ -16,11 +16,18 @@ struct SettingsView: View {
             List(selection: $router.page) {
                 Label("General", systemImage: "gearshape").tag("general")
                 Label("Shortcuts", systemImage: "keyboard").tag("shortcuts")
+                let active = state.plugins.filter { state.config.isEnabled($0) }
+                let inactive = state.plugins.filter { !state.config.isEnabled($0) }
                 Section("Plugins") {
-                    ForEach(state.plugins, id: \.id) { plugin in
-                        Label(plugin.name, systemImage: plugin.symbol)
-                            .foregroundStyle(state.config.isEnabled(plugin) ? .primary : .secondary)
-                            .tag(plugin.id)
+                    ForEach(active, id: \.id) { plugin in
+                        Label(plugin.name, systemImage: plugin.symbol).tag(plugin.id)
+                    }
+                }
+                if !inactive.isEmpty {
+                    Section("Inactive") {
+                        ForEach(inactive, id: \.id) { plugin in
+                            Label(plugin.name, systemImage: plugin.symbol).foregroundStyle(.secondary).tag(plugin.id)
+                        }
                     }
                 }
             }
@@ -54,8 +61,18 @@ private struct GeneralPage: View {
                 Text("Every setting lives in config.json. Edits made in a text editor apply within a second.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Plugins") {
-                ForEach(state.plugins, id: \.id) { plugin in
+            pluginSection("Plugins", state.plugins.filter { state.config.isEnabled($0) })
+            pluginSection("Inactive", state.plugins.filter { !state.config.isEnabled($0) })
+            IssueList(state: state, extra: error)
+        }
+        .formStyle(.grouped)
+        .navigationTitle("General")
+    }
+
+    @ViewBuilder private func pluginSection(_ title: String, _ plugins: [Plugin]) -> some View {
+        if !plugins.isEmpty {
+            Section(title) {
+                ForEach(plugins, id: \.id) { plugin in
                     HStack(spacing: 12) {
                         Image(systemName: plugin.symbol).foregroundStyle(.tint).frame(width: 22)
                         VStack(alignment: .leading, spacing: 2) {
@@ -68,10 +85,7 @@ private struct GeneralPage: View {
                     }
                 }
             }
-            IssueList(state: state, extra: error)
         }
-        .formStyle(.grouped)
-        .navigationTitle("General")
     }
 
     private func enabledBinding(_ plugin: Plugin) -> Binding<Bool> {

@@ -19,22 +19,62 @@ No account and no server. AI Chat uses the Claude Code or Codex CLI you already 
 
 ## Install
 
-Requires macOS 13+ and Xcode or the Command Line Tools (`xcode-select --install`).
+The app is built from source on the Mac that will run it (any Mac with macOS 13+: MacBook, Mac mini, iMac, Studio). There is no download; the build takes about a minute.
 
-```bash
-git clone https://github.com/lucasXiaofan/quick-capture-macos.git
-```
+1. Install Apple's build tools, if the Mac doesn't have Xcode yet:
 
-```bash
-cd quick-capture-macos && scripts/build.sh --install
-```
+   ```bash
+   xcode-select --install
+   ```
 
-The app opens with a **Welcome** window: switch on the plugins you want and follow their setup steps. Afterwards, the camera icon in the menu bar shows the most-used action of each plugin you switched on (seven at most), **Plugins ▸** has everything else per plugin, and **Settings** is where you change any shortcut.
+2. Get the code:
 
-For AI Chat, install at least one CLI and run it once to sign in:
+   ```bash
+   git clone https://github.com/lucasXiaofan/quick-capture-macos.git
+   ```
+
+3. Build, install into `/Applications` and launch:
+
+   ```bash
+   cd quick-capture-macos && scripts/build.sh --install
+   ```
+
+4. The app opens with a **Welcome** window: switch on the plugins you want and follow their setup steps (macOS asks for Screen Recording, Camera or Microphone only when a plugin needs it). Afterwards, the camera icon in the menu bar shows the most-used action of each plugin you switched on (seven at most), **Plugins ▸** has everything else per plugin, and **Settings** is where you change any shortcut and turn on *Open at login*.
+
+For AI Chat and Tickets, install at least one CLI and run it once to sign in:
 
 - Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`
 - Codex: `npm i -g @openai/codex`
+
+**Updating:** in the cloned folder, `git pull && scripts/build.sh --install`.
+
+**A second Mac:** each Mac has its own settings and its own permissions. To carry your settings over, copy `~/Library/Application Support/Quick Capture/config.json` to the same place on the new Mac before the first launch, then check the folders it names (Obsidian vault, Task Log folder, Brake files) exist there too.
+
+**Permissions after a rebuild:** without a signing certificate the build is signed ad hoc, and macOS may ask for Screen Recording again after each rebuild. A free *Apple Development* certificate (Xcode → Settings → Accounts) avoids that; the script picks it up by itself. → [docs/development.md](docs/development.md)
+
+## What works on which Mac
+
+Everything works on a MacBook (Air or Pro) with Apple Silicon, because it has a camera and a microphone built in. A Mac mini, Mac Studio or Mac Pro has neither, so the camera features need a webcam plugged in (or an iPhone as Continuity Camera); the rest works as is. Leave the plugins you can't use switched off.
+
+| Plugin | MacBook | Mac mini / Studio (no camera, no microphone) |
+|---|---|---|
+| Radial Wheel | ✅ | ✅ |
+| AI Chat | ✅ | ✅ |
+| Obsidian Capture | ✅ | ✅ |
+| Task Log | ✅ | ✅ |
+| Tickets | ✅ | ✅ |
+| Skill Manager | ✅ | ✅ |
+| Memory Monitor | ✅ | ✅ |
+| Storage Manager | ✅ | ✅ |
+| Brake | ✅ | ✅ |
+| Keyboard Mouse | ✅ | ✅ (the keyboard needs the activation key, Right ⌥ by default; choose another in Settings) |
+| Read Aloud | ✅ Apple Silicon only | ✅ Apple Silicon only (not on an Intel Mac: it runs on MLX) |
+| Media Capture: meeting recording (⌃⌥A) | ✅ microphone + the Mac's sound | ⚠️ the Mac's sound only, until a microphone is connected (USB, headset, AirPods, a webcam's) |
+| Media Capture: dashboard, replay, transcripts | ✅ | ✅ |
+| Media Capture: camera video (⌃⌥R), screen + camera (⌃⌥⇧R), selfie (⌃⌥F) | ✅ | ❌ “No camera found”, until a webcam or Continuity Camera is connected |
+| Nose Control | ✅ | ❌ needs a camera, same as above |
+
+Screenshots (Obsidian Capture, Task Log, Tickets, Read Aloud) need the Screen Recording permission on every Mac, and work on all of them. Screen recording exists only as *screen + camera*, so it needs a camera too.
 
 ## Using it
 
@@ -43,7 +83,7 @@ For AI Chat, install at least one CLI and run it once to sign in:
 - **Obsidian Capture:** press ⌘⇧I, drag a region, add a note, and press ⌘↩. It lands at your cursor in Obsidian. Add ⌥ (⌥⇧⌘I / ⌥⇧⌘J) to send to today's diary instead. → [docs/obsidian-capture.md](docs/obsidian-capture.md)
 - **Task Log:** turn it on in Settings, choose a folder and assign the two shortcuts; a screenshot or note goes to the end of today's `YYYY-MM-DD.md` there. → [docs/task-log.md](docs/task-log.md)
 - **Read Aloud:** turn it on in Settings (needs a Python with `mlx-audio`), assign a shortcut, drag a region of text and hear it in a local Kokoro voice; the clipboard works too. → [docs/read-aloud.md](docs/read-aloud.md)
-- **Brake:** turn it on in Settings, pick one reminder (a PDF or EPUB book at a page, a video or audio clip from a second, an image, or just a line) and give it a shortcut or a wheel slice; it opens right there, every time. → [docs/brake.md](docs/brake.md)
+- **Brake:** turn it on in Settings, add reminders and pick the one to show (a PDF or EPUB book at a bookmark, a video or audio clip from a second, an image, or just a line) and give it a shortcut or a wheel slice; it opens right there, every time. → [docs/brake.md](docs/brake.md)
 - **Keyboard Mouse:** turn it on in Settings, then hold Right ⌥ and press W/A/S/D to move, 1–6 to jump to a screen panel, Space to click (twice = double click), E to right-click. → [docs/keyboard-mouse.md](docs/keyboard-mouse.md)
 - **Nose Control (experimental, not recommended):** turn it on in Settings, press ⌃⌥N, calibrate (centre, then your comfortable left/right/up/down limits, confirming each with ⌥↩), then move the pointer with your head. ⌥↩ left click, ⌥⇧↩ right click, ⌃⌥↩ double click, ⌥Space pause. All shortcuts are configurable. → [docs/nose-control.md](docs/nose-control.md)
 

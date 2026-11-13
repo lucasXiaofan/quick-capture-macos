@@ -17,8 +17,9 @@ final class EpubBookController: BookController {
     private var page = 0
     private var pageCount = 1
     private var columns = 1
-    private var bookmarkChapter: Int
-    private var bookmarkProgress: Double
+    /// Every bookmark (chapters 1-based), and the one Brake opens at.
+    private var bookmarks: [BrakeBookmark]
+    private var shownID: String?
     private(set) var fontName: String
     private(set) var fontSize: Int
     private var landing: Landing = .start
@@ -28,20 +29,21 @@ final class EpubBookController: BookController {
 
     override var contentView: NSView { webView }
     override var isEPUB: Bool { true }
+    override var hasManyBookmarks: Bool { true }
 
     static let padH: CGFloat = 56
     static let padV: CGFloat = 44
 
-    init(url: URL, settings: BrakeSettings, plugin: BrakePlugin) {
+    init(url: URL, source src: BrakeSource, settings: BrakeSettings, plugin: BrakePlugin) {
         source = url
         store = EpubHighlightStore(book: url)
-        bookmarkChapter = settings.chapter - 1
-        bookmarkProgress = settings.chapterProgress
+        bookmarks = src.bookmarks
+        shownID = src.shown?.id
         fontName = settings.font
         fontSize = settings.fontSize
         let config = WKWebViewConfiguration()
         webView = BrakeWebView(frame: .zero, configuration: config)
-        super.init(plugin: plugin)
+        super.init(plugin: plugin, sourceID: src.id)
         config.userContentController.add(EpubMessageHandler(self), name: "brake")
         webView.controller = self
         let nav = EpubNavigation(self)
@@ -66,14 +68,31 @@ final class EpubBookController: BookController {
             book = b
             title = b.title
             sliderRange = 1...Double(max(2, b.chapters.count))
-            bookmarkChapter = min(max(0, bookmarkChapter), b.chapters.count - 1)
-            if started { load(bookmarkChapter, .progress(bookmarkProgress)) }
+            if started { openAtShown() }
         }
     }
 
     override func start() {
         started = true
-        if book != nil { load(bookmarkChapter, .progress(bookmarkProgress)) }
+        if book != nil { openAtShown() }
+    }
+
+    /// Where Brake opens: the chosen bookmark, else the start of the book. Chapter 0-based.
+    private var home: (chapter: Int, progress: Double) {
+        guard let m = bookmarks.first(where: { $0.id == shownID }) else { return (0, 0) }
+        return (index(m), m.progress)
+    }
+
+    private func index(_ m: BrakeBookmark) -> Int { min(max(0, m.chapter - 1), max(0, (book?.chapters.count ?? 1) - 1)) }
+
+    private func openAtShown() {
+        let h = home
+        load(h.chapter, .progress(h.progress))
+    }
+
+    /// The bookmark on the page now showing.
+    private var markHere: BrakeBookmark? {
+        bookmarks.first { index($0) == chapter && pageFor(progress: $0.progress) == page }
     }
 
     override func stop() {
@@ -196,9 +215,19 @@ final class EpubBookController: BookController {
         let title = book.titles[chapter]
         positionLabel = "\(title) · \(page + 1) of \(pageCount)"
         sliderValue = Double(chapter + 1)
-        bookmarkShowing = chapter == bookmarkChapter && page == pageFor(progress: bookmarkProgress)
+        let here = markHere
+        bookmarkShowing = here != nil
+        shownShowing = here != nil && here?.id == shownID
+        let h = home
+        hasShownMark = bookmarks.contains { $0.id == shownID }
+        if !hasShownMark { shownShowing = chapter == h.chapter && page == 0 }
         canGoBack = chapter > 0 || page > 0
         canGoForward = chapter < book.chapters.count - 1 || page < pageCount - 1
+        let items = bookmarks.sorted { ($0.chapter, $0.progress) < ($1.chapter, $1.progress) }.map { m in
+            BookMarkItem(id: m.id, label: book.titles[index(m)] + (m.progress > 0 ? " · \(Int((m.progress * 100).rounded()))%" : ""),
+                         shown: m.id == shownID)
+        }
+        if items != marks { marks = items }
         let rect = bookmarkShowing
             ? CGRect(x: Self.padH, y: 0, width: max(0, webView.bounds.width - 2 * Self.padH), height: webView.bounds.height) : nil
         if rect != ribbon { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { ribbon = rect } }
@@ -239,20 +268,53 @@ final class EpubBookController: BookController {
 
     // MARK: Bookmark
 
+    /// ⌘D: bookmark this page, or take its bookmark away.
     override func bookmarkHere() {
-        guard book != nil, !bookmarkShowing else { return }
-        let c = chapter
+        guard let book else { return }
+        if let here = markHere {
+            bookmarks.removeAll { $0.id == here.id }
+            let wasShown = here.id == shownID
+            if wasShown { shownID = nil }
+            saveMarks()
+            sync()
+            Toast.show(wasShown ? "Bookmark removed — Brake now opens at the start of the book" : "Bookmark removed")
+            return
+        }
         let p = pageCount > 1 ? (Double(page) / Double(pageCount) * 1000).rounded() / 1000 : 0
-        bookmarkChapter = c
-        bookmarkProgress = p
-        save { $0.chapter = c + 1; $0.chapterProgress = p }
+        let m = BrakeBookmark(chapter: chapter + 1, progress: p)
+        bookmarks.append(m)
+        saveMarks()
         sync()
-        Toast.show("Brake now opens here: \(book?.titles[c] ?? "")")
+        Toast.show("Bookmarked: \(book.titles[chapter]) — click the pin (⇧⌘D) to have Brake open here")
+    }
+
+    /// ⇧⌘D: the bookmark on this page becomes the one Brake opens at; the old one stays an ordinary bookmark.
+    override func showHere() {
+        guard let here = markHere, here.id != shownID else { return }
+        shownID = here.id
+        saveMarks()
+        sync()
+        Toast.show("Brake now opens here: \(book?.titles[chapter] ?? "")")
+    }
+
+    private func saveMarks() {
+        let marks = bookmarks, shown = shownID
+        saveSource { $0.bookmarks = marks; $0.shownBookmark = shown }
     }
 
     override func goToBookmark() {
-        if chapter == bookmarkChapter { show(page: pageFor(progress: bookmarkProgress), forward: pageFor(progress: bookmarkProgress) > page) }
-        else { load(bookmarkChapter, .progress(bookmarkProgress)) }
+        let h = home
+        go(chapter: h.chapter, progress: h.progress)
+    }
+
+    override func goTo(mark id: String) {
+        guard let m = bookmarks.first(where: { $0.id == id }) else { return }
+        go(chapter: index(m), progress: m.progress)
+    }
+
+    private func go(chapter c: Int, progress: Double) {
+        if c == chapter { let t = pageFor(progress: progress); show(page: t, forward: t > page) }
+        else { load(c, .progress(progress)) }
     }
 
     // MARK: Text
